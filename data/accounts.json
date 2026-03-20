@@ -1,0 +1,26 @@
+[
+  {
+    "id": "eb51d6dd-acfd-418b-ac4a-b52ae502723f",
+    "role": "renter",
+    "username": "123",
+    "password": "$2b$10$TTjtYDWpP.oCpWcaXvi6COJeDLN8YCGe/vPAeDfseXoShDMrxK2FW",
+    "displayName": "cyx",
+    "createdAt": 1773842137912
+  },
+  {
+    "id": "f48142cd-bb57-4d73-882a-51ef7ccc7cae",
+    "role": "admin",
+    "username": "321",
+    "password": "$2b$10$cSuf9TurAROXqdJQ4IrqGuRJ3uklgZPqwliXmdZfO/mSqEuEEdAWW",
+    "displayName": "cyx",
+    "createdAt": 1773842201701
+  },
+  {
+    "id": "db99e32e-aba3-4197-80ba-255118c563e7",
+    "role": "dispatcher",
+    "username": "555",
+    "password": "$2b$10$7wL.8KWU7b0K5bBpKmkQt.IEynPXCqoMuXqr4VhN7vBqfNydtHIMm",
+    "displayName": "cyx",
+    "createdAt": 1773842233188
+  }
+]

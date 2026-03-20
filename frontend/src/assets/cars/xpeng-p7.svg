@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="bg5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F59E0B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D97706;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" fill="url(#bg5)"/>
+  <g transform="translate(50, 60)">
+    <path d="M15,120 Q25,65 95,45 L265,45 Q330,45 310,95 L320,120 Q320,140 300,140 L30,140 Q5,140 5,120 Z" fill="#FFFFFF" stroke="#92400E" stroke-width="3"/>
+    <path d="M80,50 Q90,40 105,40 L195,40 Q215,40 220,50 L220,95 Q215,105 195,105 L105,105 Q90,105 85,95 Z" fill="#FDE68A" opacity="0.8"/>
+    <path d="M225,50 Q230,40 245,40 L295,40 Q310,40 310,55 L310,95 Q310,105 295,105 L245,105 Q230,105 225,95 Z" fill="#FDE68A" opacity="0.8"/>
+    <circle cx="85" cy="140" r="32" fill="#111827" stroke="#F59E0B" stroke-width="3"/>
+    <circle cx="85" cy="140" r="16" fill="#D97706"/>
+    <circle cx="245" cy="140" r="32" fill="#111827" stroke="#F59E0B" stroke-width="3"/>
+    <circle cx="245" cy="140" r="16" fill="#D97706"/>
+    <text x="165" y="125" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#92400E">XPENG</text>
+  </g>
+  <text x="200" y="250" text-anchor="middle" font-family="Arial" font-size="20" font-weight="bold" fill="#FFFFFF">Xpeng P7</text>
+</svg>

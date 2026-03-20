@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Environment variables (keep .env.example)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.*.production
+
+# Logs
+logs/
+*.log
+pids/
+*.pid
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build outputs
+dist/
+build/
+.cache/
+.temp/
+tmp/
+temp/
+
+# Data files (keep sample data)
+# data/
+
+# Blockchain artifacts
+artifacts/
+cache/
+typechain-types/
+
+# Coverage
+coverage/
+.nyc_output/
+.eslintcache
+
+# Misc
+*.orig

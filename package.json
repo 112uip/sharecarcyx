@@ -1,0 +1,25 @@
+{
+  "name": "consortium-carshare-prototype",
+  "version": "1.0.0",
+  "description": "Consortium blockchain based car sharing prototype",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "contract:compile": "node scripts/compile-contract.js",
+    "setup": "npm install && npm run contract:compile",
+    "download-car-photos": "node scripts/download-car-photos.mjs"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^2.1.1",
+    "mysql2": "^3.15.2",
+    "solc": "^0.8.30",
+    "winston": "^3.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}
