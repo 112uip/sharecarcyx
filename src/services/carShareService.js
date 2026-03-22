@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const bcrypt = require('bcrypt');
 const ConsortiumLedger = require("../blockchain/ledger");
 const DataStore = require("../utils/dataStore");
+const { sendRefundToWallet } = require("../utils/ethRefund");
 
 class CarShareService {
   constructor() {
@@ -16,6 +17,7 @@ class CarShareService {
     this.depositAmount = parseInt(process.env.DEPOSIT_AMOUNT) || 800;
     this.pricePerHour = parseInt(process.env.PRICE_PER_HOUR) || 35;
     this.damageFee = parseInt(process.env.DAMAGE_FEE) || 120;
+    this.ethRefundCnyRate = parseFloat(process.env.ETH_REFUND_RATE) || 2500;
   }
 
   static async create() {
@@ -143,25 +145,30 @@ class CarShareService {
     return session;
   }
 
-  async submitIdentity(name, idCard, driverLicense) {
+  async submitIdentity(name, idCard, driverLicense, idCardPhoto, idCardBackPhoto, driverLicensePhoto, accountId = null) {
     await this.refreshState();
     if (!name || !idCard || !driverLicense) {
       throw new Error("姓名、身份证号、驾驶证号不能为空");
     }
-    if (!this.isValidChineseIdCard(idCard)) {
-      throw new Error("身份证号格式或校验位不正确");
+    if (!idCardPhoto || !idCardBackPhoto || !driverLicensePhoto) {
+      throw new Error("请上传身份证正面、背面和驾驶证照片");
     }
     const exists = this.users.find((item) => item.idCard === String(idCard).toUpperCase());
     if (exists) {
       throw new Error("该身份证号已提交认证");
     }
+    const pendingId = this.generatePendingUserId();
     const user = {
-      id: this.generateSystemUserId(),
+      id: pendingId,
       name,
       idCard: String(idCard).toUpperCase(),
       driverLicense,
+      idCardPhoto,
+      idCardBackPhoto,
+      driverLicensePhoto,
       status: "pending",
       credit: 100,
+      accountId: accountId || null,
       createdAt: Date.now()
     };
     this.users.push(user);
@@ -189,9 +196,25 @@ class CarShareService {
     throw new Error("系统用户ID生成失败，请重试");
   }
 
+  generatePendingUserId() {
+    return `PEND-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+  }
+
   isValidChineseIdCard(idCard) {
     const normalized = String(idCard || "").trim().toUpperCase();
-    return /^\d{17}[\dX]$/.test(normalized);
+    // 检查基本格式：17位数字 + 1位数字或X
+    if (!/^\d{17}[\dX]$/.test(normalized)) {
+      return false;
+    }
+    // 校验位验证
+    const weights = [7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2];
+    const checkCodes = ['1', '0', 'X', '9', '8', '7', '6', '5', '4', '3', '2'];
+    let sum = 0;
+    for (let i = 0; i < 17; i++) {
+      sum += parseInt(normalized[i]) * weights[i];
+    }
+    const checkCode = checkCodes[sum % 11];
+    return normalized[17] === checkCode;
   }
 
   async approveUser(userId, adminName) {
@@ -202,11 +225,20 @@ class CarShareService {
     }
     user.status = "approved";
     await this.ledger.queueTransaction("identity_approved", {
-      userId,
+      userId: userId,
       adminName
     });
     await this.ledger.commitBlock("municipal-node", "identity-approval");
     await this.saveData();
+    return user;
+  }
+
+  async getUserByAccountId(accountId) {
+    await this.refreshState();
+    const user = this.users.find((item) => item.accountId === accountId);
+    if (!user) {
+      throw new Error("未找到关联的用户认证信息");
+    }
     return user;
   }
 
@@ -277,7 +309,7 @@ class CarShareService {
     return removed;
   }
 
-  async createOrder(userId, carId, hours) {
+  async createOrder(userId, carId, hours, txHash) {
     await this.refreshState();
     const user = this.users.find((item) => item.id === userId);
     if (!user) {
@@ -314,6 +346,12 @@ class CarShareService {
       issueResolvedBy: null,
       issueResolveNote: null,
       finalFee: null,
+      refundRequested: false,
+      refundStatus: null,
+      refundDispatcherApproved: null,
+      refundAdminApproved: null,
+      usageFeePaid: false,
+      depositTxHash: txHash || null,
       createdAt: Date.now()
     };
     this.orders.push(order);
@@ -321,7 +359,8 @@ class CarShareService {
     await this.ledger.queueTransaction("order_created", {
       orderId: order.id,
       userId,
-      carId
+      carId,
+      depositTxHash: txHash || null
     });
     await this.ledger.commitBlock("operator-node", "order-created");
     await this.saveData();
@@ -340,19 +379,25 @@ class CarShareService {
     order.status = "in_use";
     order.pickupPhotoHash = pickupPhotoHash;
     order.pickupIot = pickupIot;
+    order.pickupAt = Date.now();
     const car = this.cars.find((item) => item.id === order.carId);
     car.status = "in_use";
     await this.ledger.queueTransaction("car_picked_up", {
       orderId,
       pickupPhotoHash,
-      pickupIot
+      pickupIot,
+      carId: order.carId,
+      carModel: car.model,
+      carPlate: car.plate,
+      battery: car.battery,
+      location: car.location
     });
     await this.ledger.commitBlock("insurance-node", "pickup-proof");
     await this.saveData();
     return order;
   }
 
-  async reportIssue(orderId, issueType, detail) {
+  async reportIssue(orderId, issueType, detail, requestRefund = false) {
     await this.refreshState();
     const order = this.orders.find((item) => item.id === orderId);
     if (!order) {
@@ -366,6 +411,10 @@ class CarShareService {
     order.issueResolvedAt = null;
     order.issueResolvedBy = null;
     order.issueResolveNote = null;
+    order.refundRequested = requestRefund;
+    order.refundStatus = requestRefund ? "pending_dispatcher" : null;
+    order.refundDispatcherApproved = null;
+    order.refundAdminApproved = null;
     const car = this.cars.find((item) => item.id === order.carId);
     if (car && car.status === "in_use") {
       car.status = "maintenance";
@@ -373,7 +422,8 @@ class CarShareService {
     await this.ledger.queueTransaction("issue_reported", {
       orderId,
       issueType,
-      detail
+      detail,
+      requestRefund
     });
     await this.ledger.commitBlock("operator-node", "issue-reported");
     await this.saveData();
@@ -387,7 +437,7 @@ class CarShareService {
       .sort((a, b) => (b.issueReportedAt || b.createdAt) - (a.issueReportedAt || a.createdAt));
   }
 
-  async resolveIssue(orderId, dispatcher, targetStatus, note) {
+  async resolveIssue(orderId, dispatcher, targetStatus, note, refundApproved = false) {
     await this.refreshState();
     const order = this.orders.find((item) => item.id === orderId);
     if (!order) {
@@ -411,6 +461,10 @@ class CarShareService {
     order.issueResolvedAt = Date.now();
     order.issueResolvedBy = dispatcher || "dispatcher";
     order.issueResolveNote = note || "";
+    order.refundDispatcherApproved = order.refundRequested ? refundApproved : null;
+    if (order.refundRequested) {
+      order.refundStatus = refundApproved ? "dispatcher_approved" : "dispatcher_rejected";
+    }
 
     const maintenanceLog = {
       id: crypto.randomUUID(),
@@ -428,7 +482,9 @@ class CarShareService {
       carId: car.id,
       dispatcher: order.issueResolvedBy,
       targetStatus: finalStatus,
-      note: order.issueResolveNote
+      note: order.issueResolveNote,
+      refundApproved,
+      refundStatus: order.refundStatus
     });
     await this.ledger.commitBlock("municipal-node", "issue-resolved");
     await this.saveData();
@@ -447,10 +503,13 @@ class CarShareService {
     order.status = "completed";
     order.returnPhotoHash = returnPhotoHash;
     order.returnIot = returnIot;
-    const useHours = Math.max(1, Math.ceil((Date.now() - order.createdAt) / (1000 * 60 * 60)));
+    const actualMinutes = (Date.now() - order.createdAt) / (1000 * 60);
+    const useHours = Math.max(1, Math.ceil(actualMinutes / 60));
     const usageFee = useHours * this.pricePerHour;
     const damageFee = order.issueReported ? this.damageFee : 0;
     order.finalFee = usageFee + damageFee;
+    const remaining = Math.max(0, order.finalFee - order.deposit);
+    order.usageFeePaid = remaining === 0;
     const car = this.cars.find((item) => item.id === order.carId);
     car.status = "available";
     car.battery = Math.max(10, car.battery - Math.floor(Math.random() * 25));
@@ -458,10 +517,37 @@ class CarShareService {
       orderId,
       returnPhotoHash,
       returnIot,
+      actualMinutes,
       finalFee: order.finalFee,
-      depositReturned: Math.max(0, order.deposit - damageFee)
+      depositReturned: Math.max(0, order.deposit - damageFee),
+      remaining
     });
     await this.ledger.commitBlock("insurance-node", "return-settlement");
+    await this.saveData();
+    return {
+      ...order,
+      actualMinutes,
+      usageFee,
+      depositPaid: order.deposit,
+      remaining,
+      damageFee
+    };
+  }
+
+  async payUsageFee(orderId, txHash) {
+    await this.refreshState();
+    const order = this.orders.find((item) => item.id === orderId);
+    if (!order) {
+      throw new Error("订单不存在");
+    }
+    if (order.status !== "completed") {
+      throw new Error("订单未完成，无法支付使用费");
+    }
+    if (order.usageFeePaid) {
+      throw new Error("使用费已支付，请勿重复操作");
+    }
+    order.usageFeePaid = true;
+    order.usageFeeTxHash = txHash || null;
     await this.saveData();
     return order;
   }
@@ -528,6 +614,119 @@ class CarShareService {
   async listPendingUsers() {
     await this.refreshState();
     return this.users.filter((item) => item.status === "pending");
+  }
+
+  async listRefundRequests() {
+    await this.refreshState();
+    return this.orders.filter((item) => item.refundRequested && item.refundStatus === "dispatcher_approved");
+  }
+
+  getUserWallet(userId) {
+    const user = this.users.find((item) => item.id === userId);
+    return user?.walletAddress || null;
+  }
+
+  async updateUserWallet(userId, walletAddress) {
+    await this.refreshState();
+    const user = this.users.find((item) => item.id === userId);
+    if (!user) {
+      throw new Error("用户不存在");
+    }
+    user.walletAddress = walletAddress || null;
+    await this.saveData();
+    return user;
+  }
+
+  async processRefund(orderId, adminId, approved, refundAmount, note) {
+    await this.refreshState();
+    const order = this.orders.find((item) => item.id === orderId);
+    if (!order) {
+      throw new Error("订单不存在");
+    }
+    if (!order.refundRequested) {
+      throw new Error("该订单没有申请退费");
+    }
+    if (order.refundStatus !== "dispatcher_approved") {
+      throw new Error("退费申请尚未通过调度员审核");
+    }
+    order.refundAdminApproved = approved;
+    order.refundStatus = approved ? "completed" : "rejected";
+    order.refundProcessedAt = Date.now();
+    order.refundProcessedBy = adminId;
+    order.refundAmount = approved ? refundAmount : 0;
+    order.refundNote = note || "";
+
+    const car = this.cars.find((item) => item.id === order.carId);
+
+    let ethRefundResult = null;
+
+    if (approved) {
+      const user = this.users.find((u) => u.id === order.userId);
+      const userWallet = user?.walletAddress || null;
+      const depositEth = this.depositAmount / this.ethRefundCnyRate;
+      ethRefundResult = await sendRefundToWallet(userWallet, depositEth);
+      order.ethRefundTxHash = ethRefundResult?.txHash || null;
+      order.ethRefundTo = userWallet;
+      order.ethRefundAmount = depositEth;
+
+      // 退费成功后，将订单状态改为已完成，车辆状态改为可用
+      order.status = "completed";
+      if (car) {
+        car.status = "available";
+      }
+
+      await this.ledger.queueTransaction("refund_processed", {
+        orderId,
+        adminId,
+        amount: refundAmount,
+        note: order.refundNote,
+        ethTxHash: ethRefundResult?.txHash || null
+      });
+      await this.ledger.commitBlock("operator-node", "refund-completed");
+    } else {
+      await this.ledger.queueTransaction("refund_rejected", {
+        orderId,
+        adminId,
+        reason: order.refundNote
+      });
+      await this.ledger.commitBlock("municipal-node", "refund-rejected");
+    }
+
+    await this.saveData();
+    return { ...order, ethRefundResult };
+  }
+
+  async getCarEvidence() {
+    await this.refreshState();
+    const evidenceData = [];
+    for (const order of this.orders) {
+      if (order.pickupPhotoHash || order.pickupIot || order.returnPhotoHash || order.returnIot) {
+        const car = this.cars.find(c => c.id === order.carId);
+        const user = this.users.find(u => u.id === order.userId);
+        const evidence = {
+          orderId: order.id,
+          carId: order.carId,
+          carModel: car?.model || '',
+          carPlate: car?.plate || '',
+          userId: order.userId,
+          userName: user?.name || '',
+          status: order.status,
+          pickupPhotoHash: order.pickupPhotoHash,
+          pickupIot: order.pickupIot,
+          returnPhotoHash: order.returnPhotoHash,
+          returnIot: order.returnIot,
+          createdAt: order.createdAt,
+          pickupAt: order.pickupAt || null,
+          returnAt: order.returnAt || null,
+          issueReported: order.issueReported,
+          issueType: order.issueType,
+          issueDetail: order.issueDetail,
+          depositTxHash: order.depositTxHash
+        };
+        evidenceData.push(evidence);
+      }
+    }
+    return evidenceData.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   }
 
   async getOverview() {

@@ -32,6 +32,7 @@ class DataStore {
     await adminPool.query(`CREATE DATABASE IF NOT EXISTS \`${this.config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
     await adminPool.end();
 
+    // 创建基础表（如果不存在）
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(64) PRIMARY KEY,
@@ -40,10 +41,22 @@ class DataStore {
         driver_license VARCHAR(64) NOT NULL,
         status VARCHAR(32) NOT NULL,
         credit INT NOT NULL,
-        created_at BIGINT NOT NULL
+        created_at BIGINT NOT NULL,
+        wallet_address VARCHAR(64) NULL,
+        id_card_photo VARCHAR(128) NULL,
+        driver_license_photo VARCHAR(128) NULL,
+        account_id VARCHAR(64) NULL
       )
     `);
 
+    // 确保 users 表有所有需要的列
+    await this.ensureColumn('users', 'wallet_address', 'VARCHAR(64) NULL');
+    await this.ensureColumn('users', 'id_card_photo', 'VARCHAR(128) NULL');
+    await this.ensureColumn('users', 'id_card_back_photo', 'VARCHAR(128) NULL');
+    await this.ensureColumn('users', 'driver_license_photo', 'VARCHAR(128) NULL');
+    await this.ensureColumn('users', 'account_id', 'VARCHAR(64) NULL');
+
+    // 创建 cars 表（如果不存在）
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS cars (
         id VARCHAR(32) PRIMARY KEY,
@@ -51,10 +64,21 @@ class DataStore {
         plate VARCHAR(32) NOT NULL,
         battery INT NOT NULL,
         location VARCHAR(120) NOT NULL,
-        status VARCHAR(32) NOT NULL
+        status VARCHAR(32) NOT NULL,
+        seats INT NOT NULL DEFAULT 5,
+        price_per_hour INT NOT NULL DEFAULT 35,
+        brand VARCHAR(64) NULL,
+        type VARCHAR(64) NULL
       )
     `);
 
+    // 确保 cars 表有所有需要的列
+    await this.ensureColumn('cars', 'seats', 'INT NOT NULL DEFAULT 5');
+    await this.ensureColumn('cars', 'price_per_hour', 'INT NOT NULL DEFAULT 35');
+    await this.ensureColumn('cars', 'brand', 'VARCHAR(64) NULL');
+    await this.ensureColumn('cars', 'type', 'VARCHAR(64) NULL');
+
+    // 创建 orders 表（如果不存在）
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id VARCHAR(64) PRIMARY KEY,
@@ -68,11 +92,34 @@ class DataStore {
         return_photo_hash TEXT NULL,
         pickup_iot TEXT NULL,
         return_iot TEXT NULL,
-        issue_reported TINYINT(1) NOT NULL,
+        issue_reported TINYINT(1) NOT NULL DEFAULT 0,
+        issue_type VARCHAR(64) NULL,
+        issue_detail TEXT NULL,
+        issue_status VARCHAR(32) NULL,
+        issue_reported_at BIGINT NULL,
+        issue_resolved_at BIGINT NULL,
+        issue_resolved_by VARCHAR(128) NULL,
+        issue_resolve_note TEXT NULL,
         final_fee INT NULL,
+        refund_requested TINYINT(1) NOT NULL DEFAULT 0,
+        refund_status VARCHAR(32) NULL,
+        refund_dispatcher_approved TINYINT(1) NULL,
+        refund_admin_approved TINYINT(1) NULL,
+        refund_amount INT NULL,
+        refund_note TEXT NULL,
+        refund_processed_at BIGINT NULL,
+        refund_processed_by VARCHAR(128) NULL,
+        eth_refund_tx_hash VARCHAR(128) NULL,
+        eth_refund_to VARCHAR(64) NULL,
+        eth_refund_amount DECIMAL(16,8) NULL,
+        usage_fee_paid TINYINT(1) NOT NULL DEFAULT 0,
+        usage_fee_tx_hash VARCHAR(128) NULL,
+        deposit_tx_hash VARCHAR(128) NULL,
         created_at BIGINT NOT NULL
       )
     `);
+
+    // 确保 orders 表有所有需要的列
     await this.ensureColumn('orders', 'issue_type', 'VARCHAR(64) NULL');
     await this.ensureColumn('orders', 'issue_detail', 'TEXT NULL');
     await this.ensureColumn('orders', 'issue_status', 'VARCHAR(32) NULL');
@@ -80,10 +127,20 @@ class DataStore {
     await this.ensureColumn('orders', 'issue_resolved_at', 'BIGINT NULL');
     await this.ensureColumn('orders', 'issue_resolved_by', 'VARCHAR(128) NULL');
     await this.ensureColumn('orders', 'issue_resolve_note', 'TEXT NULL');
-    await this.ensureColumn('cars', 'seats', 'INT NOT NULL DEFAULT 5');
-    await this.ensureColumn('cars', 'price_per_hour', 'INT NOT NULL DEFAULT 35');
-    await this.ensureColumn('cars', 'brand', 'VARCHAR(64) NULL');
-    await this.ensureColumn('cars', 'type', 'VARCHAR(64) NULL');
+    await this.ensureColumn('orders', 'refund_requested', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await this.ensureColumn('orders', 'refund_status', 'VARCHAR(32) NULL');
+    await this.ensureColumn('orders', 'refund_dispatcher_approved', 'TINYINT(1) NULL');
+    await this.ensureColumn('orders', 'refund_admin_approved', 'TINYINT(1) NULL');
+    await this.ensureColumn('orders', 'refund_amount', 'INT NULL');
+    await this.ensureColumn('orders', 'refund_note', 'TEXT NULL');
+    await this.ensureColumn('orders', 'refund_processed_at', 'BIGINT NULL');
+    await this.ensureColumn('orders', 'refund_processed_by', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'eth_refund_tx_hash', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'eth_refund_to', 'VARCHAR(64) NULL');
+    await this.ensureColumn('orders', 'eth_refund_amount', 'DECIMAL(16,8) NULL');
+    await this.ensureColumn('orders', 'usage_fee_paid', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await this.ensureColumn('orders', 'usage_fee_tx_hash', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'deposit_tx_hash', 'VARCHAR(128) NULL');
 
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS maintenance_logs (
@@ -145,7 +202,7 @@ class DataStore {
 
   async getUsers() {
     const [rows] = await this.pool.query(
-      `SELECT id, name, id_card, driver_license, status, credit, created_at FROM users ORDER BY created_at ASC`
+      `SELECT id, name, id_card, driver_license, status, credit, created_at, wallet_address, id_card_photo, id_card_back_photo, driver_license_photo, account_id FROM users ORDER BY created_at ASC`
     );
     return rows.map((item) => ({
       id: item.id,
@@ -154,7 +211,12 @@ class DataStore {
       driverLicense: item.driver_license,
       status: item.status,
       credit: item.credit,
-      createdAt: Number(item.created_at)
+      createdAt: Number(item.created_at),
+      walletAddress: item.wallet_address || null,
+      idCardPhoto: item.id_card_photo || null,
+      idCardBackPhoto: item.id_card_back_photo || null,
+      driverLicensePhoto: item.driver_license_photo || null,
+      accountId: item.account_id || null
     }));
   }
 
@@ -162,8 +224,8 @@ class DataStore {
     await this.pool.query('DELETE FROM users');
     for (const user of users) {
       await this.pool.query(
-        `INSERT INTO users (id, name, id_card, driver_license, status, credit, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, name, id_card, driver_license, status, credit, created_at, wallet_address, id_card_photo, id_card_back_photo, driver_license_photo, account_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           user.id,
           user.name,
@@ -171,7 +233,12 @@ class DataStore {
           user.driverLicense,
           user.status,
           user.credit,
-          Number(user.createdAt || Date.now())
+          Number(user.createdAt || Date.now()),
+          user.walletAddress || null,
+          user.idCardPhoto || null,
+          user.idCardBackPhoto || null,
+          user.driverLicensePhoto || null,
+          user.accountId || null
         ]
       );
     }
@@ -232,7 +299,11 @@ class DataStore {
     const [rows] = await this.pool.query(
       `SELECT id, user_id, car_id, hours, status, deposit, estimated_fee, pickup_photo_hash, return_photo_hash,
               pickup_iot, return_iot, issue_reported, issue_type, issue_detail, issue_status, issue_reported_at,
-              issue_resolved_at, issue_resolved_by, issue_resolve_note, final_fee, created_at
+              issue_resolved_at, issue_resolved_by, issue_resolve_note, final_fee, created_at,
+              refund_requested, refund_status, refund_dispatcher_approved, refund_admin_approved,
+              refund_amount, refund_note, refund_processed_at, refund_processed_by,
+              eth_refund_tx_hash, eth_refund_to, eth_refund_amount,
+              usage_fee_paid, usage_fee_tx_hash, deposit_tx_hash
        FROM orders ORDER BY created_at ASC`
     );
     return rows.map((item) => ({
@@ -256,43 +327,117 @@ class DataStore {
       issueResolvedBy: item.issue_resolved_by,
       issueResolveNote: item.issue_resolve_note,
       finalFee: item.final_fee,
+      refundRequested: item.refund_requested ? true : false,
+      refundStatus: item.refund_status || null,
+      refundDispatcherApproved: item.refund_dispatcher_approved !== null && item.refund_dispatcher_approved !== undefined ? (item.refund_dispatcher_approved ? true : false) : null,
+      refundAdminApproved: item.refund_admin_approved !== null && item.refund_admin_approved !== undefined ? (item.refund_admin_approved ? true : false) : null,
+      refundAmount: item.refund_amount,
+      refundNote: item.refund_note || null,
+      refundProcessedAt: item.refund_processed_at ? Number(item.refund_processed_at) : null,
+      refundProcessedBy: item.refund_processed_by || null,
+      ethRefundTxHash: item.eth_refund_tx_hash || null,
+      ethRefundTo: item.eth_refund_to || null,
+      ethRefundAmount: item.eth_refund_amount ? Number(item.eth_refund_amount) : null,
+      usageFeePaid: Boolean(item.usage_fee_paid),
+      usageFeeTxHash: item.usage_fee_tx_hash || null,
+      depositTxHash: item.deposit_tx_hash || null,
       createdAt: Number(item.created_at)
     }));
   }
 
   async saveOrders(orders) {
     await this.pool.query('DELETE FROM orders');
+    const orderColumns = [
+      'id',
+      'user_id',
+      'car_id',
+      'hours',
+      'status',
+      'deposit',
+      'estimated_fee',
+      'pickup_photo_hash',
+      'return_photo_hash',
+      'pickup_iot',
+      'return_iot',
+      'issue_reported',
+      'issue_type',
+      'issue_detail',
+      'issue_status',
+      'issue_reported_at',
+      'issue_resolved_at',
+      'issue_resolved_by',
+      'issue_resolve_note',
+      'final_fee',
+      'created_at',
+      'refund_requested',
+      'refund_status',
+      'refund_dispatcher_approved',
+      'refund_admin_approved',
+      'refund_amount',
+      'refund_note',
+      'refund_processed_at',
+      'refund_processed_by',
+      'eth_refund_tx_hash',
+      'eth_refund_to',
+      'eth_refund_amount',
+      'usage_fee_paid',
+      'usage_fee_tx_hash',
+      'deposit_tx_hash'
+    ];
+    const placeholders = orderColumns.map(() => '?').join(', ');
+    const insertSql = `INSERT INTO orders (${orderColumns.join(', ')}) VALUES (${placeholders})`;
+
     for (const order of orders) {
-      await this.pool.query(
-        `INSERT INTO orders (id, user_id, car_id, hours, status, deposit, estimated_fee, pickup_photo_hash,
-                             return_photo_hash, pickup_iot, return_iot, issue_reported, issue_type, issue_detail,
-                             issue_status, issue_reported_at, issue_resolved_at, issue_resolved_by, issue_resolve_note,
-                             final_fee, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          order.id,
-          order.userId,
-          order.carId,
-          Number(order.hours),
-          order.status,
-          Number(order.deposit),
-          Number(order.estimatedFee),
-          order.pickupPhotoHash,
-          order.returnPhotoHash,
-          order.pickupIot,
-          order.returnIot,
-          order.issueReported ? 1 : 0,
-          order.issueType || null,
-          order.issueDetail || null,
-          order.issueStatus || null,
-          order.issueReportedAt ? Number(order.issueReportedAt) : null,
-          order.issueResolvedAt ? Number(order.issueResolvedAt) : null,
-          order.issueResolvedBy || null,
-          order.issueResolveNote || null,
-          order.finalFee === null ? null : Number(order.finalFee),
-          Number(order.createdAt)
-        ]
-      );
+      const hours = Number(order.hours);
+      const deposit = Number(order.deposit);
+      const estimatedFee = Number(order.estimatedFee);
+      const values = [
+        order.id,
+        order.userId,
+        order.carId,
+        Number.isFinite(hours) ? hours : 0,
+        order.status,
+        Number.isFinite(deposit) ? deposit : 0,
+        Number.isFinite(estimatedFee) ? estimatedFee : 0,
+        order.pickupPhotoHash ?? null,
+        order.returnPhotoHash ?? null,
+        order.pickupIot ?? null,
+        order.returnIot ?? null,
+        order.issueReported ? 1 : 0,
+        order.issueType ?? null,
+        order.issueDetail ?? null,
+        order.issueStatus ?? null,
+        order.issueReportedAt != null ? Number(order.issueReportedAt) : null,
+        order.issueResolvedAt != null ? Number(order.issueResolvedAt) : null,
+        order.issueResolvedBy ?? null,
+        order.issueResolveNote ?? null,
+        order.finalFee == null ? null : Number(order.finalFee),
+        Number(order.createdAt) || Date.now(),
+        order.refundRequested ? 1 : 0,
+        order.refundStatus ?? null,
+        order.refundDispatcherApproved !== null && order.refundDispatcherApproved !== undefined
+          ? (order.refundDispatcherApproved ? 1 : 0)
+          : null,
+        order.refundAdminApproved !== null && order.refundAdminApproved !== undefined
+          ? (order.refundAdminApproved ? 1 : 0)
+          : null,
+        order.refundAmount ?? null,
+        order.refundNote ?? null,
+        order.refundProcessedAt != null ? Number(order.refundProcessedAt) : null,
+        order.refundProcessedBy ?? null,
+        order.ethRefundTxHash ?? null,
+        order.ethRefundTo ?? null,
+        order.ethRefundAmount != null && order.ethRefundAmount !== undefined ? Number(order.ethRefundAmount) : null,
+        order.usageFeePaid ? 1 : 0,
+        order.usageFeeTxHash ?? null,
+        order.depositTxHash ?? null
+      ];
+      if (values.length !== orderColumns.length) {
+        throw new Error(
+          `saveOrders: 列数(${orderColumns.length})与值数(${values.length})不一致，请检查 dataStore.saveOrders`
+        );
+      }
+      await this.pool.query(insertSql, values);
     }
   }
 
@@ -355,15 +500,15 @@ class DataStore {
 
   async savePendingTransaction(tx) {
     await this.pool.query(
-      `INSERT INTO chain_transactions (id, block_index, type, payload, timestamp)
-       VALUES (?, NULL, ?, ?, ?)`,
-      [tx.id, tx.type, JSON.stringify(tx.payload), Number(tx.timestamp)]
+      `INSERT IGNORE INTO chain_transactions (id, block_index, type, payload, timestamp)
+       VALUES (?, ?, ?, ?, ?)`,
+      [tx.id, null, tx.type, JSON.stringify(tx.payload), Number(tx.timestamp)]
     );
   }
 
   async saveBlock(block) {
     await this.pool.query(
-      `INSERT INTO chain_blocks (block_index, previous_hash, timestamp, validator, reason, hash)
+      `INSERT IGNORE INTO chain_blocks (block_index, previous_hash, timestamp, validator, reason, hash)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [block.index, block.previousHash, Number(block.timestamp), block.validator, block.reason || null, block.hash]
     );
@@ -373,9 +518,10 @@ class DataStore {
     if (!txIds.length) {
       return;
     }
+    const inList = txIds.map(() => '?').join(', ');
     await this.pool.query(
-      `UPDATE chain_transactions SET block_index = ? WHERE id IN (?)`,
-      [blockIndex, txIds]
+      `UPDATE chain_transactions SET block_index = ? WHERE id IN (${inList})`,
+      [blockIndex, ...txIds]
     );
   }
 

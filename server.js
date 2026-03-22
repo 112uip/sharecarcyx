@@ -1,6 +1,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '.env') });
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const multer = require("multer");
 const CarShareService = require("./src/services/carShareService");
 const logger = require('./src/utils/logger');
@@ -9,16 +10,47 @@ const app = express();
 const port = process.env.PORT || 3000;
 let service;
 
+// JSON 请求体解析
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// 确保目录存在
 const photosDir = path.join(__dirname, "frontend", "public", "cars", "photos");
-const storage = multer.diskStorage({
+const userPhotosDir = path.join(__dirname, "frontend", "public", "users", "photos");
+[photosDir, userPhotosDir].forEach(dir => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
+
+const userStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, userPhotosDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `USER-${Date.now()}${ext}`);
+  },
+});
+const uploadUserPhotos = multer({
+  storage: userStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (/^image\/(jpeg|png|jpg|gif|webp)$/.test(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("仅支持 jpg、png、gif、webp 格式的图片"));
+    }
+  },
+});
+
+const carStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, photosDir),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `CAR-${Date.now()}${ext}`);
+    cb(null, `${file.originalname.replace(/\.[^.]+$/, '')}${ext}`);
   },
 });
 const upload = multer({
-  storage,
+  storage: carStorage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (/^image\/(jpeg|png|jpg|gif|webp)$/.test(file.mimetype)) {
@@ -28,8 +60,6 @@ const upload = multer({
     }
   },
 });
-
-app.use(express.json());
 
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.path}`);
@@ -51,12 +81,37 @@ app.get("/api/cars", async (req, res) => {
 
 app.post("/api/auth/submit", async (req, res) => {
   try {
-    const { name, idCard, driverLicense } = req.body;
-    const user = await service.submitIdentity(name, idCard, driverLicense);
+    const { name, idCard, driverLicense, idCardPhoto, idCardBackPhoto, driverLicensePhoto, accountId } = req.body;
+    const user = await service.submitIdentity(name, idCard, driverLicense, idCardPhoto, idCardBackPhoto, driverLicensePhoto, accountId);
     logger.info(`Identity submitted: ${user.id}`);
     res.status(201).json(user);
   } catch (error) {
     logger.error('Error submitting identity:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+app.post("/api/auth/upload-photos", uploadUserPhotos.fields([
+  { name: 'idCardPhoto', maxCount: 1 },
+  { name: 'idCardBackPhoto', maxCount: 1 },
+  { name: 'driverLicensePhoto', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    const files = req.files;
+    const result = {};
+    if (files.idCardPhoto && files.idCardPhoto[0]) {
+      result.idCardPhoto = files.idCardPhoto[0].filename;
+    }
+    if (files.idCardBackPhoto && files.idCardBackPhoto[0]) {
+      result.idCardBackPhoto = files.idCardBackPhoto[0].filename;
+    }
+    if (files.driverLicensePhoto && files.driverLicensePhoto[0]) {
+      result.driverLicensePhoto = files.driverLicensePhoto[0].filename;
+    }
+    logger.info(`User photos uploaded:`, result);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error uploading photos:', error);
     res.status(400).json({ message: error.message });
   }
 });
@@ -85,10 +140,35 @@ app.post("/api/accounts/login", async (req, res) => {
   }
 });
 
+app.post("/api/users/:userId/wallet", async (req, res) => {
+  try {
+    const { walletAddress } = req.body;
+    const user = await service.updateUserWallet(req.params.userId, walletAddress);
+    logger.info(`Wallet address updated for user: ${req.params.userId}`);
+    res.json({ success: true, walletAddress: user.walletAddress });
+  } catch (error) {
+    logger.error('Error updating wallet address:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+app.get("/api/users/me", async (req, res) => {
+  try {
+    const { accountId } = req.query;
+    if (!accountId) {
+      return res.status(400).json({ message: "缺少账户ID" });
+    }
+    const user = await service.getUserByAccountId(accountId);
+    res.json(user);
+  } catch (error) {
+    res.status(404).json({ message: error.message });
+  }
+});
+
 app.post("/api/admin/approve/:userId", async (req, res) => {
   try {
     const user = await service.approveUser(req.params.userId, "admin-001");
-    logger.info(`User approved: ${req.params.userId}`);
+    logger.info(`User approved: ${req.params.userId} -> ${user.id}`);
     res.json(user);
   } catch (error) {
     logger.error('Error approving user:', error);
@@ -141,8 +221,8 @@ app.delete("/api/admin/cars/:id", async (req, res) => {
 
 app.post("/api/orders", async (req, res) => {
   try {
-    const { userId, carId, hours } = req.body;
-    const order = await service.createOrder(userId, carId, Number(hours));
+    const { userId, carId, hours, txHash } = req.body;
+    const order = await service.createOrder(userId, carId, Number(hours), txHash);
     logger.info(`Order created: ${order.id}`);
     res.status(201).json(order);
   } catch (error) {
@@ -165,9 +245,9 @@ app.post("/api/orders/:orderId/pickup", async (req, res) => {
 
 app.post("/api/orders/:orderId/report-issue", async (req, res) => {
   try {
-    const { issueType, detail } = req.body;
-    const order = await service.reportIssue(req.params.orderId, issueType, detail);
-    logger.info(`Issue reported for order: ${req.params.orderId}`);
+    const { issueType, detail, requestRefund } = req.body;
+    const order = await service.reportIssue(req.params.orderId, issueType, detail, requestRefund);
+    logger.info(`Issue reported for order: ${req.params.orderId}, refund requested: ${requestRefund}`);
     res.json(order);
   } catch (error) {
     logger.error('Error reporting issue:', error);
@@ -183,6 +263,18 @@ app.post("/api/orders/:orderId/return", async (req, res) => {
     res.json(order);
   } catch (error) {
     logger.error('Error returning car:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+app.post("/api/orders/:orderId/pay-usage-fee", async (req, res) => {
+  try {
+    const { txHash } = req.body;
+    const order = await service.payUsageFee(req.params.orderId, txHash);
+    logger.info(`Usage fee paid for order: ${req.params.orderId}, txHash: ${txHash}`);
+    res.json(order);
+  } catch (error) {
+    logger.error('Error paying usage fee:', error);
     res.status(400).json({ message: error.message });
   }
 });
@@ -221,11 +313,34 @@ app.get("/api/dispatcher/issues", async (req, res) => {
 
 app.post("/api/dispatcher/issues/:orderId/resolve", async (req, res) => {
   try {
-    const { dispatcher, targetStatus, note } = req.body;
-    const result = await service.resolveIssue(req.params.orderId, dispatcher, targetStatus, note);
+    const { dispatcher, targetStatus, note, refundApproved } = req.body;
+    const result = await service.resolveIssue(req.params.orderId, dispatcher, targetStatus, note, refundApproved);
+    logger.info(`Issue resolved for order: ${req.params.orderId}, refund approved by dispatcher: ${refundApproved}`);
     res.json(result);
   } catch (error) {
     logger.error('Error resolving dispatcher issue:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+app.get("/api/admin/refund-requests", async (req, res) => {
+  try {
+    const requests = await service.listRefundRequests();
+    res.json(requests);
+  } catch (error) {
+    logger.error('Error listing refund requests:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+app.post("/api/admin/refund/:orderId", async (req, res) => {
+  try {
+    const { adminId, approved, refundAmount, note } = req.body;
+    const result = await service.processRefund(req.params.orderId, adminId, approved, refundAmount, note);
+    logger.info(`Refund processed for order: ${req.params.orderId}, approved: ${approved}`);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error processing refund:', error);
     res.status(400).json({ message: error.message });
   }
 });
@@ -247,9 +362,20 @@ app.post("/api/admin/cars/:id/photo", upload.single("photo"), async (req, res) =
 });
 
 app.use("/cars/photos", express.static(photosDir));
+app.use("/users/photos", express.static(userPhotosDir));
 
 app.get("/api/chain", (req, res) => {
   res.json(service.ledger.blocks);
+});
+
+app.get("/api/admin/car-evidence", async (req, res) => {
+  try {
+    const evidenceData = await service.getCarEvidence();
+    res.json(evidenceData);
+  } catch (error) {
+    logger.error('Error getting car evidence:', error);
+    res.status(500).json({ message: error.message });
+  }
 });
 
 app.get("/api/state", async (req, res) => {

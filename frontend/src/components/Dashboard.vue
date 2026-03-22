@@ -57,7 +57,11 @@
             </el-menu-item>
             <el-menu-item index="admin-chain">
               <el-icon><Link /></el-icon>
-              <span>链上数据</span>
+              <span>汽车存证</span>
+            </el-menu-item>
+            <el-menu-item index="admin-refund">
+              <el-icon><Wallet /></el-icon>
+              <span>退费管理</span>
             </el-menu-item>
           </template>
 
@@ -177,7 +181,7 @@
 
         <!-- Renter: Auth -->
         <el-card v-if="activeMenu === 'renter-auth'" header="实名资质认证" shadow="hover" class="action-card">
-          <el-form :model="authForm" label-width="100px" style="max-width: 500px">
+          <el-form :model="authForm" label-width="100px" style="max-width: 600px">
             <el-form-item label="真实姓名">
               <el-input v-model="authForm.name" />
             </el-form-item>
@@ -187,8 +191,57 @@
             <el-form-item label="驾驶证号">
               <el-input v-model="authForm.driverLicense" />
             </el-form-item>
+            <el-form-item label="身份证照片">
+              <div style="display: flex; gap: 16px; align-items: flex-start;">
+                <div>
+                  <el-upload
+                    class="photo-uploader"
+                    :auto-upload="false"
+                    :show-file-list="false"
+                    :on-change="(file) => { uploadAuthPhotos(file.raw, 'idCardPhoto').then(f => authPhotos.idCardPhoto = f).catch(e => ElMessage.error(e.message)) }"
+                    accept="image/*"
+                  >
+                    <img v-if="authPhotos.idCardPhoto" :src="`/users/photos/${authPhotos.idCardPhoto}`" class="photo-preview" />
+                    <div v-else class="photo-placeholder">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8c939d" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    </div>
+                  </el-upload>
+                  <div class="upload-tip">正面</div>
+                </div>
+                <div>
+                  <el-upload
+                    class="photo-uploader"
+                    :auto-upload="false"
+                    :show-file-list="false"
+                    :on-change="(file) => { uploadAuthPhotos(file.raw, 'idCardBackPhoto').then(f => authPhotos.idCardBackPhoto = f).catch(e => ElMessage.error(e.message)) }"
+                    accept="image/*"
+                  >
+                    <img v-if="authPhotos.idCardBackPhoto" :src="`/users/photos/${authPhotos.idCardBackPhoto}`" class="photo-preview" />
+                    <div v-else class="photo-placeholder">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8c939d" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    </div>
+                  </el-upload>
+                  <div class="upload-tip">背面</div>
+                </div>
+              </div>
+            </el-form-item>
+            <el-form-item label="驾驶证照片">
+              <el-upload
+                class="photo-uploader"
+                :auto-upload="false"
+                :show-file-list="false"
+                :on-change="(file) => { uploadAuthPhotos(file.raw, 'driverLicensePhoto').then(f => authPhotos.driverLicensePhoto = f).catch(e => ElMessage.error(e.message)) }"
+                accept="image/*"
+              >
+                <img v-if="authPhotos.driverLicensePhoto" :src="`/users/photos/${authPhotos.driverLicensePhoto}`" class="photo-preview" />
+                <div v-else class="photo-placeholder">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8c939d" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                </div>
+              </el-upload>
+              <div class="upload-tip">请上传驾驶证正面照片</div>
+            </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="submitIdentity">提交认证信息</el-button>
+              <el-button type="primary" @click="submitIdentity" :loading="authUploading">提交认证信息</el-button>
             </el-form-item>
           </el-form>
           <div v-if="myUserId" class="mt-4 p-4 bg-blue-50 rounded">
@@ -217,7 +270,10 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="租用时长">
-                <el-input-number v-model="rentForm.hours" :min="1" :max="48" /> 小时
+                <div class="rent-hours-inline">
+                  <el-input-number v-model="rentForm.hours" :min="1" :max="48" />
+                  <span class="rent-hours-unit">小时</span>
+                </div>
               </el-form-item>
               <el-form-item label="支付金额">
                 <el-input :model-value="paymentPreview" disabled />
@@ -269,17 +325,78 @@
                 {{ row.finalFee ?? '-' }}
               </template>
             </el-table-column>
+            <el-table-column label="退费状态" width="200">
+              <template #default="{ row }">
+                <el-tag
+                  v-if="row.refundRequested || row.refundRequested === 1"
+                  :type="getRefundTagType(row.refundStatus)"
+                  size="small"
+                >
+                  {{ refundStatusLabel(row.refundStatus) }}
+                </el-tag>
+                <span v-else style="color: #909399;">无</span>
+                <div v-if="row.refundStatus === 'completed' && row.ethRefundTxHash" style="margin-top: 4px;">
+                  <span style="font-size: 11px; color: #67c23a;">
+                    +{{ row.ethRefundAmount?.toFixed(5) }} ETH
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
 
         <!-- Admin: Approve -->
         <el-card v-if="activeMenu === 'admin-approve'" header="审批用户资质" shadow="hover" class="action-card">
           <el-table :data="pendingUsers" style="width: 100%">
-            <el-table-column prop="name" label="姓名" width="120" />
-            <el-table-column prop="idCard" label="身份证号" min-width="180" />
-            <el-table-column prop="driverLicense" label="驾驶证号" min-width="140" />
-            <el-table-column prop="id" label="用户ID" min-width="210" />
-            <el-table-column label="操作" width="120">
+            <el-table-column prop="name" label="姓名" width="100" />
+            <el-table-column prop="idCard" label="身份证号" min-width="160" />
+            <el-table-column label="证件照片" width="320">
+              <template #default="{ row }">
+                <div class="review-photos">
+                  <el-popover placement="top" :width="280" trigger="hover">
+                    <template #reference>
+                      <div class="photo-thumb">
+                        <img v-if="row.idCardPhoto" :src="`/users/photos/${row.idCardPhoto}`" />
+                        <span v-else class="no-photo">无</span>
+                      </div>
+                    </template>
+                    <div class="photo-popover">
+                      <div class="popover-title">身份证照片</div>
+                      <img v-if="row.idCardPhoto" :src="`/users/photos/${row.idCardPhoto}`" class="popover-img" />
+                      <div v-else class="popover-no-photo">未上传</div>
+                    </div>
+                  </el-popover>
+                  <el-popover placement="top" :width="280" trigger="hover">
+                    <template #reference>
+                      <div class="photo-thumb">
+                        <img v-if="row.driverLicensePhoto" :src="`/users/photos/${row.driverLicensePhoto}`" />
+                        <span v-else class="no-photo">无</span>
+                      </div>
+                    </template>
+                    <div class="photo-popover">
+                      <div class="popover-title">驾驶证照片</div>
+                      <img v-if="row.driverLicensePhoto" :src="`/users/photos/${row.driverLicensePhoto}`" class="popover-img" />
+                      <div v-else class="popover-no-photo">未上传</div>
+                    </div>
+                  </el-popover>
+                  <el-popover placement="top" :width="280" trigger="hover">
+                    <template #reference>
+                      <div class="photo-thumb">
+                        <img v-if="row.idCardBackPhoto" :src="`/users/photos/${row.idCardBackPhoto}`" />
+                        <span v-else class="no-photo">无</span>
+                      </div>
+                    </template>
+                    <div class="photo-popover">
+                      <div class="popover-title">身份证背面</div>
+                      <img v-if="row.idCardBackPhoto" :src="`/users/photos/${row.idCardBackPhoto}`" class="popover-img" />
+                      <div v-else class="popover-no-photo">未上传</div>
+                    </div>
+                  </el-popover>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="id" label="用户ID" min-width="200" />
+            <el-table-column label="操作" width="100">
               <template #default="{ row }">
                 <el-button type="primary" size="small" @click="approveUser(row.id)">通过</el-button>
               </template>
@@ -380,10 +497,143 @@
           <el-empty v-if="allCars.length === 0 && !loadingCars" description="暂无车辆数据" />
         </el-card>
 
-        <!-- Admin: Chain -->
-        <el-card v-if="activeMenu === 'admin-chain'" header="区块链账本数据" shadow="hover">
-          <el-button type="primary" size="small" @click="loadChain" class="mb-4">刷新区块数据</el-button>
-          <pre class="chain-code">{{ chainData }}</pre>
+        <!-- Admin: Car Evidence -->
+        <el-card v-if="activeMenu === 'admin-chain'" header="汽车存证数据" shadow="hover">
+          <el-alert
+            title="存证说明"
+            type="info"
+            :closable="false"
+            class="mb-4"
+            description="以下数据记录了每次取车时的车辆状态快照，包括外观照片哈希和IoT设备数据（电量、GPS等），确保车况可追溯、纠纷可仲裁。所有数据均已上链存证。"
+          />
+          <el-button type="primary" size="small" @click="loadCarEvidence" class="mb-4">刷新存证数据</el-button>
+          <el-table :data="carEvidenceList" style="width: 100%" v-loading="loadingEvidence" max-height="600">
+            <el-table-column prop="orderId" label="订单ID" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="carId" label="车辆ID" width="100" />
+            <el-table-column prop="carModel" label="车型" min-width="120" />
+            <el-table-column prop="carPlate" label="车牌" width="100" />
+            <el-table-column prop="userName" label="租车人" width="100" />
+            <el-table-column prop="pickupPhotoHash" label="取车照片哈希" min-width="160">
+              <template #default="{ row }">
+                <span class="hash-text" v-if="row.pickupPhotoHash">{{ row.pickupPhotoHash }}</span>
+                <span v-else style="color: #909399;">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="pickupIot" label="取车IoT数据" min-width="140">
+              <template #default="{ row }">
+                <el-tag size="small" type="success" v-if="row.pickupIot">{{ row.pickupIot }}</el-tag>
+                <span v-else style="color: #909399;">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="returnPhotoHash" label="还车照片哈希" min-width="160">
+              <template #default="{ row }">
+                <span class="hash-text" v-if="row.returnPhotoHash">{{ row.returnPhotoHash }}</span>
+                <span v-else style="color: #909399;">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="returnIot" label="还车IoT数据" min-width="140">
+              <template #default="{ row }">
+                <el-tag size="small" type="warning" v-if="row.returnIot">{{ row.returnIot }}</el-tag>
+                <span v-else style="color: #909399;">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createdAt" label="存证时间" width="170">
+              <template #default="{ row }">
+                {{ formatTime(row.createdAt) }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="订单状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="getOrderStatusType(row.status)" size="small">
+                  {{ getOrderStatusLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="issueReported" label="故障" width="80">
+              <template #default="{ row }">
+                <el-tag type="danger" size="small" v-if="row.issueReported">有</el-tag>
+                <span v-else style="color: #67c23a;">无</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="carEvidenceList.length === 0 && !loadingEvidence" description="暂无存证数据" class="mt-4" />
+        </el-card>
+
+        <!-- Admin: Refund Management -->
+        <el-card v-if="activeMenu === 'admin-refund'" header="退费管理" shadow="hover" class="action-card">
+          <el-alert v-if="refundRequests.length === 0" type="info" :closable="false" class="mb-4">
+            暂无待处理的退费申请
+          </el-alert>
+          <el-table v-else :data="refundRequests" style="width: 100%" class="mb-4">
+            <el-table-column prop="id" label="订单ID" min-width="170" />
+            <el-table-column prop="carId" label="车辆ID" width="90" />
+            <el-table-column prop="userId" label="用户ID" min-width="160" />
+            <el-table-column prop="issueType" label="故障类型" width="120">
+              <template #default="{ row }">
+                {{ row.issueType || '未分类' }}
+              </template>
+            </el-table-column>
+            <el-table-column prop="issueDetail" label="故障描述" min-width="160" />
+            <el-table-column label="押金" width="80">
+              <template #default="{ row }">
+                ¥{{ row.deposit || 0 }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag :type="refundStatusTagType(row.refundStatus)" size="small">
+                  {{ refundStatusLabel(row.refundStatus) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="ETH退费" width="200">
+              <template #default="{ row }">
+                <div v-if="row.refundStatus === 'completed'">
+                  <span v-if="row.ethRefundTxHash" style="font-size: 11px; word-break: break-all; color: #67c23a;">
+                    {{ row.ethRefundAmount?.toFixed(5) }} ETH<br/>
+                    <a :href="`https://etherscan.io/tx/${row.ethRefundTxHash}`" target="_blank" style="color: #409eff;">
+                      {{ formatWallet(row.ethRefundTxHash) }}
+                    </a>
+                  </span>
+                  <span v-else style="color: #909399; font-size: 12px;">未发起链上退款</span>
+                </div>
+                <span v-else style="color: #c0c4cc;">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" @click="openAdminRefund(row)">处理退费</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <!-- Admin Refund Dialog -->
+          <el-dialog v-model="adminRefundVisible" title="退费处理" width="520px" align-center>
+            <div v-if="adminRefundOrder" class="refund-detail">
+              <el-descriptions :column="1" border class="mb-4">
+                <el-descriptions-item label="订单ID">{{ adminRefundOrder.id }}</el-descriptions-item>
+                <el-descriptions-item label="车辆ID">{{ adminRefundOrder.carId }}</el-descriptions-item>
+                <el-descriptions-item label="用户ID">{{ adminRefundOrder.userId }}</el-descriptions-item>
+                <el-descriptions-item label="故障类型">{{ adminRefundOrder.issueType || '未分类' }}</el-descriptions-item>
+                <el-descriptions-item label="故障描述">{{ adminRefundOrder.issueDetail || '-' }}</el-descriptions-item>
+                <el-descriptions-item label="押金金额">¥{{ adminRefundOrder.deposit || 0 }}</el-descriptions-item>
+              </el-descriptions>
+              <el-form :model="adminRefundForm" label-width="100px">
+                <el-form-item label="退费金额">
+                  <el-input-number v-model="adminRefundForm.amount" :min="0" :max="adminRefundOrder.deposit || 0" :precision="2" />
+                  <span class="ml-2">元（押金上限 ¥{{ adminRefundOrder.deposit || 0 }}）</span>
+                </el-form-item>
+                <el-form-item label="处理备注">
+                  <el-input v-model="adminRefundForm.note" type="textarea" :rows="2" placeholder="填写处理备注" />
+                </el-form-item>
+              </el-form>
+            </div>
+            <template #footer>
+              <el-button @click="adminRefundVisible = false">取消</el-button>
+              <el-button type="success" @click="processRefund(true)">确认退费</el-button>
+              <el-button type="danger" @click="processRefund(false)">拒绝退费</el-button>
+            </template>
+          </el-dialog>
         </el-card>
 
         <!-- Dispatcher: Maintenance -->
@@ -398,10 +648,29 @@
                 </template>
               </el-table-column>
               <el-table-column prop="issueDetail" label="故障描述" min-width="190" />
-              <el-table-column label="操作" width="210">
+              <el-table-column label="退费申请" width="180">
                 <template #default="{ row }">
-                  <el-button size="small" type="warning" @click="resolveDispatcherIssue(row.id, 'maintenance')">转维护中</el-button>
-                  <el-button size="small" type="success" @click="resolveDispatcherIssue(row.id, 'available')">处理完成</el-button>
+                  <div v-if="row.refundRequested || row.refundRequested === 1" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <el-tag :type="getRefundTagType(row.refundStatus)" size="small">
+                      {{ refundStatusLabel(row.refundStatus) }}
+                    </el-tag>
+                    <el-button 
+                      v-if="canReviewRefund(row)" 
+                      size="small" 
+                      type="primary" 
+                      @click="openRefundReview(row)"
+                      style="margin-left: 4px;"
+                    >
+                      审核退费
+                    </el-button>
+                  </div>
+                  <span v-else style="color: #909399;">无</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="200">
+                <template #default="{ row }">
+                  <el-button size="small" type="warning" @click="resolveDispatcherIssue(row.id, 'maintenance', null)">转维护中</el-button>
+                  <el-button size="small" type="success" @click="resolveDispatcherIssue(row.id, 'available', null)">处理完成</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -514,12 +783,68 @@
           <el-button type="primary" @click="saveEditCar">保存</el-button>
         </template>
       </el-dialog>
+
+      <!-- Renter: Report Issue Dialog -->
+      <el-dialog v-model="reportIssueVisible" title="上报车辆故障" width="520px" align-center>
+        <el-form :model="reportIssueForm" label-width="100px">
+          <el-form-item label="故障类型" required>
+            <el-select v-model="reportIssueForm.issueType" placeholder="请选择故障类型" style="width: 100%">
+              <el-option v-for="item in issueTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="故障描述" required>
+            <el-input v-model="reportIssueForm.detail" type="textarea" :rows="4" placeholder="请详细描述故障情况，如故障位置、具体表现等" maxlength="500" show-word-limit />
+          </el-form-item>
+          <el-form-item>
+            <el-checkbox v-model="reportIssueForm.requestRefund">
+              <span>申请退费（押金+已用时长费用）</span>
+            </el-checkbox>
+            <div class="form-tip">勾选后，调度员将审核故障是否属实，管理员确认后进行退费处理</div>
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="reportIssueVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitReportIssue">确认上报</el-button>
+        </template>
+      </el-dialog>
+
+      <!-- Dispatcher: Refund Review Dialog -->
+      <el-dialog v-model="refundReviewVisible" title="退费申请审核" width="500px" align-center>
+        <div v-if="refundReviewOrder" class="refund-review-info">
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="订单ID">{{ refundReviewOrder.id }}</el-descriptions-item>
+            <el-descriptions-item label="车辆ID">{{ refundReviewOrder.carId }}</el-descriptions-item>
+            <el-descriptions-item label="故障类型">{{ refundReviewOrder.issueType || '未分类' }}</el-descriptions-item>
+            <el-descriptions-item label="故障描述">{{ refundReviewOrder.issueDetail || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="押金金额">{{ refundReviewOrder.deposit }} 元</el-descriptions-item>
+          </el-descriptions>
+          <el-form-item label="审核结论" class="mt-4">
+            <el-radio-group v-model="refundReviewForm.approved">
+              <el-radio :value="true">属实，同意退费</el-radio>
+              <el-radio :value="false">不属实，拒绝退费</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="处理备注">
+            <el-input v-model="refundReviewForm.note" type="textarea" :rows="2" placeholder="填写审核意见" />
+          </el-form-item>
+          <el-form-item label="处理后车辆">
+            <el-select v-model="refundReviewForm.targetStatus" style="width: 100%">
+              <el-option label="可用" value="available" />
+              <el-option label="维护中" value="maintenance" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <template #footer>
+          <el-button @click="refundReviewVisible = false">取消</el-button>
+          <el-button type="primary" @click="submitRefundReview">确认审核</el-button>
+        </template>
+      </el-dialog>
     </el-container>
   </el-container>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, reactive, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { uploadCarPhoto } from '../api'
 
@@ -536,10 +861,14 @@ const loadingCars = ref(false)
 
 // Forms
 const authForm = reactive({ name: '', idCard: '', driverLicense: '' })
+const authPhotos = reactive({ idCardPhoto: '', idCardBackPhoto: '', driverLicensePhoto: '' })
+const authUploading = ref(false)
 const myUserId = ref('')
 const currentOrderId = ref('')
 const rentForm = reactive({ carId: '', hours: 1 })
 const chainData = ref('')
+const carEvidenceList = ref([])
+const loadingEvidence = ref(false)
 const maintForm = reactive({ carId: '', action: 'charged', targetStatus: 'available', note: '' })
 const myOrders = ref([])
 const hiddenResolvedIssueIds = ref([])
@@ -549,6 +878,41 @@ const depositEth = Number(import.meta.env.VITE_DEPOSIT_ETH || 0.002)
 const rateEthPerHour = Number(import.meta.env.VITE_RATE_ETH_PER_HOUR || 0.001)
 const carDetailVisible = ref(false)
 const selectedCar = ref(null)
+
+// Renter: Report Issue Dialog
+const reportIssueVisible = ref(false)
+const reportIssueForm = reactive({
+  issueType: '',
+  detail: '',
+  requestRefund: false
+})
+const issueTypeOptions = [
+  { label: '车辆外观损坏', value: 'scratch' },
+  { label: '车辆无法启动', value: 'engine_failure' },
+  { label: '刹车系统异常', value: 'brake_failure' },
+  { label: '电量显示异常', value: 'battery_issue' },
+  { label: '车内设备损坏', value: 'interior_damage' },
+  { label: '车门/锁异常', value: 'door_lock_issue' },
+  { label: '其他故障', value: 'other' }
+]
+
+// Dispatcher: Refund Review
+const refundReviewVisible = ref(false)
+const refundReviewOrder = ref(null)
+const refundReviewForm = reactive({
+  approved: true,
+  note: '',
+  targetStatus: 'available'
+})
+
+// Admin: Refund Management
+const refundRequests = ref([])
+const adminRefundVisible = ref(false)
+const adminRefundOrder = ref(null)
+const adminRefundForm = reactive({
+  amount: 0,
+  note: ''
+})
 
 // Admin car management
 const allCars = ref([])
@@ -625,7 +989,8 @@ const handleLogout = () => {
 const handleSelectMenu = (index) => {
   activeMenu.value = index
   if (index === 'overview') loadState()
-  if (index === 'admin-chain') loadChain()
+  if (index === 'admin-chain') loadCarEvidence()
+  if (index === 'admin-refund') loadRefundRequests()
   if (index === 'admin-approve') loadState()
   if (index === 'dispatcher-maint') loadState()
   if (index === 'admin-cars') loadAllCars()
@@ -650,17 +1015,114 @@ const loadChain = async () => {
   } catch (error) {}
 }
 
+const loadCarEvidence = async () => {
+  try {
+    loadingEvidence.value = true
+    const data = await api.get('/admin/car-evidence')
+    carEvidenceList.value = data
+  } catch (error) {
+    ElMessage.error('加载存证数据失败')
+  } finally {
+    loadingEvidence.value = false
+  }
+}
+
+const formatTime = (timestamp) => {
+  if (!timestamp) return '-'
+  return new Date(timestamp).toLocaleString('zh-CN')
+}
+
+// 生成数据哈希值（用于区块链账本风格展示）
+const generateDataHash = (input) => {
+  if (!input && input !== 0) return '-'
+  let hash = 0
+  const str = String(input)
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
+  }
+  const hexHash = Math.abs(hash).toString(16).padStart(8, '0')
+  return `0x${hexHash}${Date.now().toString(16).slice(-8)}`
+}
+
+const getOrderStatusType = (status) => {
+  const map = { reserved: 'warning', in_use: 'primary', completed: 'success', cancelled: 'info' }
+  return map[status] || 'info'
+}
+
+const getOrderStatusLabel = (status) => {
+  const map = { reserved: '已预订', in_use: '使用中', completed: '已完成', cancelled: '已取消' }
+  return map[status] || status || '-'
+}
+
+const uploadAuthPhotos = async (file, type) => {
+  try {
+    const formData = new FormData()
+    formData.append(type, file)
+    const res = await api.post('/auth/upload-photos', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return res[type] || res[type.replace('Photo', 'Photo')]
+  } catch (error) {
+    throw new Error(`上传${type === 'idCardPhoto' ? '身份证' : '驾驶证'}照片失败`)
+  }
+}
+
 const submitIdentity = async () => {
   try {
     if (!authForm.name || !authForm.idCard || !authForm.driverLicense) {
       ElMessage.warning('请完整填写姓名、身份证号和驾驶证号')
       return
     }
-    const res = await api.post('/auth/submit', authForm)
+    if (!authPhotos.idCardPhoto || !authPhotos.idCardBackPhoto || !authPhotos.driverLicensePhoto) {
+      ElMessage.warning('请上传身份证正面、背面和驾驶证照片')
+      return
+    }
+    const res = await api.post('/auth/submit', {
+      ...authForm,
+      idCardPhoto: authPhotos.idCardPhoto,
+      idCardBackPhoto: authPhotos.idCardBackPhoto,
+      driverLicensePhoto: authPhotos.driverLicensePhoto,
+      accountId: props.session.accountId
+    })
     myUserId.value = res.id
     ElMessage.success('资质认证提交成功，等待管理员审批')
-  } catch (error) {}
+    // 开始轮询检查审批状态
+    startApprovalPolling(res.id)
+  } catch (error) {
+    ElMessage.error(error.message || '提交失败')
+  }
 }
+
+// 轮询检查审批状态
+let approvalPollingTimer = null
+const startApprovalPolling = (pendingId) => {
+  if (approvalPollingTimer) {
+    clearInterval(approvalPollingTimer)
+  }
+  approvalPollingTimer = setInterval(async () => {
+    try {
+      const state = await api.get('/state')
+      const myUser = (state.users || []).find(u => u.id === pendingId)
+      if (myUser && myUser.status === 'approved') {
+        myUserId.value = myUser.id
+        ElMessage.success(`您的账号已通过审批！`)
+        clearInterval(approvalPollingTimer)
+        approvalPollingTimer = null
+        persistRenterState()
+      }
+    } catch (e) {
+      // 忽略轮询错误
+    }
+  }, 5000) // 每5秒检查一次
+}
+
+onUnmounted(() => {
+  if (approvalPollingTimer) {
+    clearInterval(approvalPollingTimer)
+  }
+})
 
 const formatWallet = (address) => {
   if (!address) {
@@ -687,6 +1149,12 @@ const connectWallet = async () => {
     }
     renterWallet.value = accounts[0]
     ElMessage.success(`MetaMask 连接成功：${formatWallet(renterWallet.value)}`)
+    if (!myUserId.value && props.session.role === 'renter' && props.session.accountId) {
+      await syncRenterUser()
+    }
+    if (myUserId.value) {
+      await api.post(`/users/${myUserId.value}/wallet`, { walletAddress: renterWallet.value })
+    }
   } catch (error) {
     ElMessage.error(error.message || 'MetaMask 连接失败')
   }
@@ -712,6 +1180,25 @@ const restoreRenterState = () => {
     rentForm.carId = parsed.rentCarId || ''
     rentForm.hours = Number(parsed.rentHours || 1)
   } catch (error) {
+  }
+}
+
+// 根据 accountId 从服务端同步当前租客的用户ID，确保与后端一致
+const syncRenterUser = async () => {
+  if (props.session.role !== 'renter' || !props.session.accountId) {
+    return
+  }
+  try {
+    const user = await api.get('/users/me', {
+      params: { accountId: props.session.accountId },
+      suppressError: true
+    })
+    if (user && user.id) {
+      myUserId.value = user.id
+      persistRenterState()
+    }
+  } catch {
+    // 未找到关联用户（未提交认证）时忽略
   }
 }
 
@@ -797,26 +1284,42 @@ const createOrder = async () => {
     ElMessage.warning('请确保填写用户ID并选择车辆')
     return
   }
+  const selectedCar = carsList.value.find(c => c.id === rentForm.carId)
+  if (!selectedCar || selectedCar.status !== 'available') {
+    ElMessage.warning('所选车辆当前不可用，请选择其他可用车辆')
+    return
+  }
   try {
+    let txHash = null
     if (props.session.role === 'renter') {
       if (!renterWallet.value) {
         ElMessage.warning('请先连接 MetaMask 钱包')
         return
       }
-      const payAmount = depositEth + Number(rentForm.hours || 1) * rateEthPerHour
-      const txHash = await payByMetaMask(payAmount)
-      ElMessage.success(`MetaMask 支付成功，交易哈希：${txHash.slice(0, 12)}...`)
+      const payAmount = depositEth
+      txHash = await payByMetaMask(payAmount)
+      ElMessage.success(`押金支付成功，交易哈希：${txHash.slice(0, 12)}...`)
     }
     const res = await api.post('/orders', {
       userId: myUserId.value,
       carId: rentForm.carId,
-      hours: rentForm.hours
+      hours: rentForm.hours,
+      txHash
     })
     currentOrderId.value = res.id
     ElMessage.success('订单创建成功')
+    persistRenterState()
     loadState()
     loadMyOrders()
   } catch (error) {}
+}
+
+const clearOrderIfNotFound = (error) => {
+  const msg = error?.message || ''
+  if (msg.includes('订单不存在')) {
+    currentOrderId.value = ''
+    ElMessage.warning('该订单在服务器中不存在，已清空本地订单号，请重新创建订单')
+  }
 }
 
 const pickupCar = async () => {
@@ -827,30 +1330,77 @@ const pickupCar = async () => {
     })
     ElMessage.success('取车成功，数据已上链')
     loadState()
-  } catch (error) {}
+  } catch (error) {
+    clearOrderIfNotFound(error)
+  }
 }
 
-const reportIssue = async () => {
+const reportIssue = () => {
+  if (!currentOrderId.value) {
+    ElMessage.warning('当前没有进行中的订单')
+    return
+  }
+  reportIssueForm.issueType = ''
+  reportIssueForm.detail = ''
+  reportIssueVisible.value = true
+}
+
+const submitReportIssue = async () => {
+  if (!reportIssueForm.issueType) {
+    ElMessage.warning('请选择故障类型')
+    return
+  }
+  if (!reportIssueForm.detail || reportIssueForm.detail.trim().length < 5) {
+    ElMessage.warning('请详细描述故障情况，至少5个字')
+    return
+  }
   try {
     await api.post(`/orders/${currentOrderId.value}/report-issue`, {
-      issueType: 'scratch',
-      detail: '前保险杠有划痕'
+      issueType: reportIssueForm.issueType,
+      detail: reportIssueForm.detail.trim(),
+      requestRefund: reportIssueForm.requestRefund
     })
-    ElMessage.warning('故障已上报')
-  } catch (error) {}
+    ElMessage.success(reportIssueForm.requestRefund ? '故障已上报，已提交退费申请' : '故障已上报，调度员会尽快处理')
+    reportIssueVisible.value = false
+  } catch (error) {
+    clearOrderIfNotFound(error)
+    if (!error?.message?.includes('订单不存在')) {
+      ElMessage.error('故障上报失败，请稍后重试')
+    }
+  }
 }
 
 const returnCar = async () => {
   try {
-    await api.post(`/orders/${currentOrderId.value}/return`, {
+    const res = await api.post(`/orders/${currentOrderId.value}/return`, {
       returnPhotoHash: 'hash_returned',
       returnIot: 'gps_ok,door_locked'
     })
-    ElMessage.success('还车结算完成')
+    if (res.remaining > 0) {
+      const remainingEth = res.remaining / (Number(import.meta.env.VITE_ETH_CNY_RATE) || 2500)
+      ElMessage.warning({
+        message: `还车成功！应付差额 ${res.remaining} 元（约 ${remainingEth.toFixed(4)} ETH），请在下方完成付款`,
+        duration: 5000
+      })
+      const confirmed = await ElMessageBox.confirm(
+        `应付差额：${res.remaining} 元（约 ${remainingEth.toFixed(4)} ETH）\n\n是否现在用 MetaMask 支付？`,
+        '请完成付款',
+        { confirmButtonText: '立即支付', cancelButtonText: '稍后支付', type: 'warning' }
+      ).catch(() => false)
+      if (confirmed) {
+        const txHash = await payByMetaMask(remainingEth)
+        await api.post(`/orders/${currentOrderId.value}/pay-usage-fee`, { txHash })
+        ElMessage.success(`差额支付成功，交易哈希：${txHash.slice(0, 12)}...`)
+      }
+    } else {
+      ElMessage.success('还车成功！押金已覆盖全部费用，无需额外付款')
+    }
     currentOrderId.value = ''
     loadState()
     loadMyOrders()
-  } catch (error) {}
+  } catch (error) {
+    clearOrderIfNotFound(error)
+  }
 }
 
 const loadMyOrders = async () => {
@@ -858,21 +1408,36 @@ const loadMyOrders = async () => {
     ElMessage.warning('请先填写或获取用户ID')
     return
   }
+  const applyReturnedSuccessfully = (orders) =>
+    orders.map((order) => ({
+      ...order,
+      returnedSuccessfully:
+        order.status === 'completed' &&
+        (Boolean(order.returnPhotoHash) && Boolean(order.returnIot) ||
+          (Boolean(order.pickupPhotoHash) && order.status === 'completed'))
+    }))
+
   try {
-    myOrders.value = await api.get(`/orders/history/${myUserId.value}`, { suppressError: true })
+    const raw = await api.get(`/orders/history/${myUserId.value}`, { suppressError: true })
+    myOrders.value = applyReturnedSuccessfully(raw || [])
   } catch (error) {
+    // 首次失败后重试一次，避免偶发网络抖动误判
     try {
-      const state = await api.get('/state')
-      myOrders.value = (state.orders || [])
-        .filter((item) => item.userId === myUserId.value)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-        .map((order) => ({
-          ...order,
-          returnedSuccessfully: order.status === 'completed' && Boolean(order.returnPhotoHash) && Boolean(order.returnIot)
-        }))
-      ElMessage.warning('历史接口不可用，已使用本地状态回退查询')
-    } catch (fallbackError) {
-      ElMessage.error('订单历史查询失败，请刷新页面后重试')
+      const raw = await api.get(`/orders/history/${myUserId.value}`, { suppressError: true })
+      myOrders.value = applyReturnedSuccessfully(raw || [])
+    } catch {
+      // 重试仍然失败，使用 /state 回退查询
+      try {
+        const state = await api.get('/state')
+        myOrders.value = applyReturnedSuccessfully(
+          (state.orders || [])
+            .filter((item) => item.userId === myUserId.value)
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        )
+        ElMessage.warning('历史接口不可用，已使用本地状态回退查询')
+      } catch (fallbackError) {
+        ElMessage.error('订单历史查询失败，请刷新页面后重试')
+      }
     }
   }
 }
@@ -881,7 +1446,7 @@ const approveUser = async (userId) => {
   if (!userId) return
   try {
     await api.post(`/admin/approve/${userId}`)
-    ElMessage.success('用户审批通过')
+    ElMessage.success(`用户审批通过！`)
     loadState()
   } catch (error) {}
 }
@@ -901,7 +1466,7 @@ const submitMaintenance = async () => {
   } catch (error) {}
 }
 
-const resolveDispatcherIssue = async (orderId, targetStatus) => {
+const resolveDispatcherIssue = async (orderId, targetStatus, refundApproved = null) => {
   if (!orderId) return
   const issue = dispatcherIssues.value.find((item) => item.id === orderId)
   if (!issue?.carId) {
@@ -909,13 +1474,11 @@ const resolveDispatcherIssue = async (orderId, targetStatus) => {
     return
   }
   try {
-    await api.post('/dispatcher/maintenance', {
-      carId: issue.carId,
+    await api.post(`/dispatcher/issues/${orderId}/resolve`, {
       dispatcher: props.session.username,
-      action: targetStatus === 'maintenance' ? 'repairing' : 'relocated',
       targetStatus,
-      resolvedOrderId: orderId,
-      note: targetStatus === 'maintenance' ? '故障转维护处理' : '故障处理完成'
+      note: targetStatus === 'maintenance' ? '故障转维护处理' : '故障处理完成',
+      refundApproved
     })
     if (!hiddenResolvedIssueIds.value.includes(orderId)) {
       hiddenResolvedIssueIds.value = [...hiddenResolvedIssueIds.value, orderId]
@@ -927,9 +1490,119 @@ const resolveDispatcherIssue = async (orderId, targetStatus) => {
   } catch (error) {}
 }
 
+const openRefundReview = (order) => {
+  refundReviewOrder.value = order
+  refundReviewForm.approved = true
+  refundReviewForm.note = ''
+  refundReviewForm.targetStatus = 'available'
+  refundReviewVisible.value = true
+}
+
+const submitRefundReview = async () => {
+  if (!refundReviewOrder.value) return
+  try {
+    await api.post(`/dispatcher/issues/${refundReviewOrder.value.id}/resolve`, {
+      dispatcher: props.session.username,
+      targetStatus: refundReviewForm.targetStatus,
+      note: refundReviewForm.note,
+      refundApproved: refundReviewForm.approved
+    })
+    ElMessage.success(refundReviewForm.approved ? '已确认退费申请，将提交管理员处理' : '已拒绝退费申请')
+    refundReviewVisible.value = false
+    loadState()
+  } catch (error) {
+    ElMessage.error('审核提交失败')
+  }
+}
+
+const loadRefundRequests = async () => {
+  try {
+    refundRequests.value = await api.get('/admin/refund-requests')
+  } catch (error) {
+    try {
+      const state = await api.get('/state')
+      refundRequests.value = (state.orders || []).filter(
+        (item) => item.refundRequested && item.refundStatus === 'dispatcher_approved'
+      )
+    } catch (e) {}
+  }
+}
+
+const refundStatusTagType = (status) => {
+  const map = {
+    'dispatcher_approved': 'success',
+    'completed': 'info',
+    'rejected': 'danger'
+  }
+  return map[status] || 'info'
+}
+
+const openAdminRefund = (order) => {
+  adminRefundOrder.value = order
+  adminRefundForm.amount = order.deposit || 0
+  adminRefundForm.note = ''
+  adminRefundVisible.value = true
+}
+
+const processRefund = async (approved) => {
+  if (!adminRefundOrder.value) return
+  try {
+    const result = await api.post(`/admin/refund/${adminRefundOrder.value.id}`, {
+      adminId: props.session.username,
+      approved,
+      refundAmount: approved ? adminRefundForm.amount : 0,
+      note: adminRefundForm.note
+    })
+    if (approved && result?.ethRefundResult?.txHash) {
+      const txHash = result.ethRefundResult.txHash
+      const ethAmt = result.ethRefundResult.valueEth?.toFixed(5)
+      ElMessage.success({ message: `退费处理完成！已将 ${ethAmt} ETH 退回用户钱包（交易哈希：${txHash}）`, duration: 6000 })
+    } else if (approved) {
+      ElMessage.success('退费处理完成（未发起链上退款，请检查ETH配置）')
+    } else {
+      ElMessage.success('已拒绝退费')
+    }
+    adminRefundVisible.value = false
+    loadRefundRequests()
+    loadState()
+    if (myUserId.value) loadMyOrders()
+  } catch (error) {
+    ElMessage.error('退费处理失败')
+  }
+}
+
 const getCarStatusLabel = (status) => {
   const map = { available: '可用', reserved: '已预订', in_use: '使用中', maintenance: '维护中' }
   return map[status] || status
+}
+
+const refundStatusLabel = (status) => {
+  const map = {
+    'pending_dispatcher': '待审核',
+    'dispatcher_approved': '已通过',
+    'dispatcher_rejected': '已拒绝',
+    'completed': '已退费',
+    'rejected': '已拒绝'
+  }
+  return map[status] || (status ? status : '待审核')
+}
+
+const getRefundTagType = (status) => {
+  if (!status || status === 'pending_dispatcher') return 'warning'
+  if (status === 'dispatcher_approved') return 'success'
+  if (status === 'dispatcher_rejected' || status === 'rejected') return 'danger'
+  if (status === 'completed') return 'info'
+  return 'warning'
+}
+
+const canReviewRefund = (row) => {
+  // 检查是否有退费申请（支持 boolean 和 number 类型）
+  const hasRefundRequest = row.refundRequested === true || row.refundRequested === 1 || row.refundRequested === '1'
+  if (!hasRefundRequest) return false
+  const status = row.refundStatus
+  // 如果状态为空、null、undefined 或 'pending_dispatcher'，都可以审核
+  if (!status || status === 'pending_dispatcher' || status === '') return true
+  return false
 }
 
 // Wikimedia Commons 实拍图（800px，CC 许可）；国内直连常失败，故配合代理与本地 /cars/photos/CAR-xxx.jpg
@@ -1149,9 +1822,12 @@ const orderStatusType = (status) => {
   return map[status] || 'info'
 }
 
-onMounted(() => {
+onMounted(async () => {
   restoreRenterState()
   restoreDispatcherIssueState()
+  if (props.session.role === 'renter') {
+    await syncRenterUser()  // 从服务端同步用户ID，避免本地状态与后端不一致
+  }
   loadState()
   if (props.session.role === 'renter' && myUserId.value) {
     loadMyOrders()
@@ -1175,6 +1851,23 @@ watch(
 </script>
 
 <style scoped>
+.rent-hours-inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+}
+.rent-hours-inline :deep(.el-input-number) {
+  width: 160px;
+  flex-shrink: 0;
+}
+.rent-hours-unit {
+  color: #606266;
+  font-size: 14px;
+  line-height: 32px;
+  white-space: nowrap;
+}
+
 .dashboard-layout {
   height: 100vh;
 }
@@ -1245,6 +1938,14 @@ watch(
   color: #0f172a;
 }
 
+.stat-hash {
+  font-family: 'Courier New', Consolas, monospace;
+  font-size: 13px;
+  color: #67c23a;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
 .mt-4 {
   margin-top: 16px;
 }
@@ -1277,6 +1978,13 @@ watch(
   overflow-x: auto;
   font-size: 13px;
   max-height: 500px;
+}
+
+.hash-text {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #67c23a;
+  word-break: break-all;
 }
 
 .order-action-row {
@@ -1313,6 +2021,96 @@ watch(
 .car-card:hover {
   transform: translateY(-5px);
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+}
+
+.photo-uploader {
+  width: 150px;
+  height: 150px;
+  border: 1px dashed #d9d9d9;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.3s;
+}
+
+.photo-uploader:hover {
+  border-color: #409eff;
+}
+
+.photo-uploader-icon {
+  font-size: 28px;
+  color: #8c939d;
+}
+
+.photo-preview {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 5px;
+}
+
+.photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.review-photos {
+  display: flex;
+  gap: 6px;
+}
+
+.photo-thumb {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f7fa;
+}
+
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-thumb .no-photo {
+  font-size: 11px;
+  color: #909399;
+}
+
+.photo-popover {
+  text-align: center;
+}
+
+.popover-title {
+  font-weight: bold;
+  margin-bottom: 10px;
+  color: #303133;
+}
+
+.popover-img {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 4px;
+}
+
+.popover-no-photo {
+  color: #909399;
+  padding: 20px;
 }
 
 .car-image-wrapper {
