@@ -144,6 +144,8 @@ class DataStore {
     await this.ensureColumn('orders', 'escrow_deposit_tx_hash', 'VARCHAR(128) NULL');
     await this.ensureColumn('orders', 'escrow_completed_tx_hash', 'VARCHAR(128) NULL');
     await this.ensureColumn('orders', 'escrow_refund_tx_hash', 'VARCHAR(128) NULL');
+    // 订单完成时间（故障退款自动完成时使用）
+    await this.ensureColumn('orders', 'completed_at', 'BIGINT NULL');
     // 退押金相关字段
     await this.ensureColumn('orders', 'deposit_refund_requested', 'TINYINT(1) NOT NULL DEFAULT 0');
     await this.ensureColumn('orders', 'deposit_refund_status', 'VARCHAR(32) NULL');
@@ -320,12 +322,21 @@ class DataStore {
               eth_refund_tx_hash, eth_refund_to, eth_refund_amount,
               usage_fee_paid, usage_fee_tx_hash, deposit_tx_hash,
               escrow_deposit_tx_hash, escrow_completed_tx_hash, escrow_refund_tx_hash,
+              completed_at,
               deposit_refund_requested, deposit_refund_status, deposit_refund_reason,
               deposit_refund_applied_at, deposit_refund_processed_at, deposit_refund_processed_by,
               deposit_refund_note, deposit_refund_tx_hash, deposit_refund_to,
               deposit_escrow_refund_tx_hash, deposit_eth_amount
        FROM orders ORDER BY created_at ASC`
     );
+    // 调试：检查从数据库读取的退押金相关字段
+    const ordersWithDepositRefund = rows.filter(item => item.deposit_refund_requested);
+    if (ordersWithDepositRefund.length > 0) {
+      console.log('[DEBUG] getOrders - found', ordersWithDepositRefund.length, 'orders with deposit_refund_requested from DB:');
+      ordersWithDepositRefund.forEach(item => {
+        console.log('  orderId:', item.id, 'deposit_refund_requested:', item.deposit_refund_requested, 'deposit_refund_status:', item.deposit_refund_status);
+      });
+    }
     return rows.map((item) => ({
       id: item.id,
       userId: item.user_id,
@@ -376,11 +387,21 @@ class DataStore {
       depositRefundTo: item.deposit_refund_to || null,
       depositEscrowRefundTxHash: item.deposit_escrow_refund_tx_hash || null,
       depositEthAmount: item.deposit_eth_amount ? Number(item.deposit_eth_amount) : null,
+      completedAt: item.completed_at ? Number(item.completed_at) : null,
       createdAt: Number(item.created_at)
     }));
   }
 
   async saveOrders(orders) {
+    console.log('[DEBUG] saveOrders - saving', orders.length, 'orders');
+    // 找出需要保存退押金信息的订单
+    const ordersWithDepositRefund = orders.filter(o => o.depositRefundRequested);
+    if (ordersWithDepositRefund.length > 0) {
+      console.log('[DEBUG] saveOrders - orders with depositRefundRequested:');
+      ordersWithDepositRefund.forEach(o => {
+        console.log('  orderId:', o.id, 'depositRefundRequested:', o.depositRefundRequested, 'depositRefundStatus:', o.depositRefundStatus);
+      });
+    }
     await this.pool.query('DELETE FROM orders');
     const orderColumns = [
       'id',
@@ -421,6 +442,7 @@ class DataStore {
       'escrow_deposit_tx_hash',
       'escrow_completed_tx_hash',
       'escrow_refund_tx_hash',
+      'completed_at',
       // 退押金字段
       'deposit_refund_requested',
       'deposit_refund_status',
@@ -484,6 +506,7 @@ class DataStore {
         order.escrowDepositTxHash ?? null,
         order.escrowCompletedTxHash ?? null,
         order.escrowRefundTxHash ?? null,
+        order.completedAt != null ? Number(order.completedAt) : null,
         // 退押金字段值
         order.depositRefundRequested ? 1 : 0,
         order.depositRefundStatus ?? null,

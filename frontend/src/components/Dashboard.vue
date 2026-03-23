@@ -30,7 +30,7 @@
             </el-menu-item>
             <el-menu-item index="overview">
               <el-icon><DataBoard /></el-icon>
-              <span>系统大盘</span>
+              <span>车型甄选</span>
             </el-menu-item>
             <el-menu-item index="renter-rent">
               <el-icon><Key /></el-icon>
@@ -45,7 +45,7 @@
           <template v-if="session.role === 'admin'">
             <el-menu-item index="overview">
               <el-icon><DataBoard /></el-icon>
-              <span>系统大盘</span>
+              <span>车型甄选</span>
             </el-menu-item>
             <el-menu-item index="admin-approve">
               <el-icon><Stamp /></el-icon>
@@ -59,10 +59,6 @@
               <el-icon><Link /></el-icon>
               <span>汽车存证</span>
             </el-menu-item>
-            <el-menu-item index="admin-refund">
-              <el-icon><Wallet /></el-icon>
-              <span>退费管理</span>
-            </el-menu-item>
             <el-menu-item index="admin-deposit">
               <el-icon><Coin /></el-icon>
               <span>退押金管理</span>
@@ -72,7 +68,7 @@
           <template v-if="session.role === 'dispatcher'">
             <el-menu-item index="overview">
               <el-icon><DataBoard /></el-icon>
-              <span>系统大盘</span>
+              <span>车型甄选</span>
             </el-menu-item>
             <el-menu-item index="dispatcher-maint">
               <el-icon><Tools /></el-icon>
@@ -623,83 +619,6 @@
           <el-empty v-if="carEvidenceList.length === 0 && !loadingEvidence" description="暂无存证数据" class="mt-4" />
         </el-card>
 
-        <!-- Admin: Refund Management -->
-        <el-card v-if="activeMenu === 'admin-refund'" header="退费管理" shadow="hover" class="action-card">
-          <el-alert v-if="refundRequests.length === 0" type="info" :closable="false" class="mb-4">
-            暂无待处理的退费申请
-          </el-alert>
-          <el-table v-else :data="refundRequests" style="width: 100%" class="mb-4">
-            <el-table-column prop="id" label="订单ID" min-width="170" />
-            <el-table-column prop="carId" label="车辆ID" width="90" />
-            <el-table-column prop="userId" label="用户ID" min-width="160" />
-            <el-table-column prop="issueType" label="故障类型" width="120">
-              <template #default="{ row }">
-                {{ row.issueType || '未分类' }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="issueDetail" label="故障描述" min-width="160" />
-            <el-table-column label="押金" width="80">
-              <template #default="{ row }">
-                ¥{{ row.deposit || 0 }}
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="refundStatusTagType(row.refundStatus)" size="small">
-                  {{ refundStatusLabel(row.refundStatus) }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="ETH退费" width="200">
-              <template #default="{ row }">
-                <div v-if="row.refundStatus === 'completed'">
-                  <span v-if="row.ethRefundTxHash" style="font-size: 11px; word-break: break-all; color: #67c23a;">
-                    {{ row.ethRefundAmount?.toFixed(5) }} ETH<br/>
-                    <a :href="`https://etherscan.io/tx/${row.ethRefundTxHash}`" target="_blank" style="color: #409eff;">
-                      {{ formatWallet(row.ethRefundTxHash) }}
-                    </a>
-                  </span>
-                  <span v-else style="color: #909399; font-size: 12px;">未发起链上退款</span>
-                </div>
-                <span v-else style="color: #c0c4cc;">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="160" fixed="right">
-              <template #default="{ row }">
-                <el-button size="small" type="primary" @click="openAdminRefund(row)">处理退费</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <!-- Admin Refund Dialog -->
-          <el-dialog v-model="adminRefundVisible" title="退费处理" width="520px" align-center>
-            <div v-if="adminRefundOrder" class="refund-detail">
-              <el-descriptions :column="1" border class="mb-4">
-                <el-descriptions-item label="订单ID">{{ adminRefundOrder.id }}</el-descriptions-item>
-                <el-descriptions-item label="车辆ID">{{ adminRefundOrder.carId }}</el-descriptions-item>
-                <el-descriptions-item label="用户ID">{{ adminRefundOrder.userId }}</el-descriptions-item>
-                <el-descriptions-item label="故障类型">{{ adminRefundOrder.issueType || '未分类' }}</el-descriptions-item>
-                <el-descriptions-item label="故障描述">{{ adminRefundOrder.issueDetail || '-' }}</el-descriptions-item>
-                <el-descriptions-item label="押金金额">¥{{ adminRefundOrder.deposit || 0 }}</el-descriptions-item>
-              </el-descriptions>
-              <el-form :model="adminRefundForm" label-width="100px">
-                <el-form-item label="退费金额">
-                  <el-input-number v-model="adminRefundForm.amount" :min="0" :max="adminRefundOrder.deposit || 0" :precision="2" />
-                  <span class="ml-2">元（押金上限 ¥{{ adminRefundOrder.deposit || 0 }}）</span>
-                </el-form-item>
-                <el-form-item label="处理备注">
-                  <el-input v-model="adminRefundForm.note" type="textarea" :rows="2" placeholder="填写处理备注" />
-                </el-form-item>
-              </el-form>
-            </div>
-            <template #footer>
-              <el-button @click="adminRefundVisible = false">取消</el-button>
-              <el-button type="success" @click="processRefund(true)">确认退费</el-button>
-              <el-button type="danger" @click="processRefund(false)">拒绝退费</el-button>
-            </template>
-          </el-dialog>
-        </el-card>
-
         <!-- Admin: Deposit Refund Management -->
         <el-card v-if="activeMenu === 'admin-deposit'" header="退押金管理" shadow="hover" class="action-card">
           <el-alert type="info" :closable="false" class="mb-4">
@@ -729,6 +648,12 @@
 
           <el-table v-else :data="depositRefundRequests" style="width: 100%" v-loading="loadingDepositRefund">
             <el-table-column prop="id" label="订单ID" min-width="180" show-overflow-tooltip />
+            <el-table-column label="申请来源" width="110">
+              <template #default="{ row }">
+                <el-tag v-if="row.issueReported" type="danger" size="small">故障退押金</el-tag>
+                <el-tag v-else type="info" size="small">正常退押金</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="carId" label="车辆ID" width="90" />
             <el-table-column prop="userId" label="用户ID" min-width="180" show-overflow-tooltip />
             <el-table-column prop="deposit" label="押金金额" width="100">
@@ -884,25 +809,6 @@
                 </template>
               </el-table-column>
               <el-table-column prop="issueDetail" label="故障描述" min-width="190" />
-              <el-table-column label="退费申请" width="180">
-                <template #default="{ row }">
-                  <div v-if="row.refundRequested || row.refundRequested === 1" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                    <el-tag :type="getRefundTagType(row.refundStatus)" size="small">
-                      {{ refundStatusLabel(row.refundStatus) }}
-                    </el-tag>
-                    <el-button 
-                      v-if="canReviewRefund(row)" 
-                      size="small" 
-                      type="primary" 
-                      @click="openRefundReview(row)"
-                      style="margin-left: 4px;"
-                    >
-                      审核退费
-                    </el-button>
-                  </div>
-                  <span v-else style="color: #909399;">无</span>
-                </template>
-              </el-table-column>
               <el-table-column label="操作" width="200">
                 <template #default="{ row }">
                   <el-button size="small" type="warning" @click="resolveDispatcherIssue(row.id, 'maintenance', null)">转维护中</el-button>
@@ -1033,46 +939,14 @@
           </el-form-item>
           <el-form-item>
             <el-checkbox v-model="reportIssueForm.requestRefund">
-              <span>申请退费（押金+已用时长费用）</span>
+              <span>申请退押金</span>
             </el-checkbox>
-            <div class="form-tip">勾选后，调度员将审核故障是否属实，管理员确认后进行退费处理</div>
+            <div class="form-tip">勾选后，管理员将审核您的退押金申请</div>
           </el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="reportIssueVisible = false">取消</el-button>
           <el-button type="primary" @click="submitReportIssue">确认上报</el-button>
-        </template>
-      </el-dialog>
-
-      <!-- Dispatcher: Refund Review Dialog -->
-      <el-dialog v-model="refundReviewVisible" title="退费申请审核" width="500px" align-center>
-        <div v-if="refundReviewOrder" class="refund-review-info">
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="订单ID">{{ refundReviewOrder.id }}</el-descriptions-item>
-            <el-descriptions-item label="车辆ID">{{ refundReviewOrder.carId }}</el-descriptions-item>
-            <el-descriptions-item label="故障类型">{{ refundReviewOrder.issueType || '未分类' }}</el-descriptions-item>
-            <el-descriptions-item label="故障描述">{{ refundReviewOrder.issueDetail || '-' }}</el-descriptions-item>
-            <el-descriptions-item label="押金金额">{{ refundReviewOrder.deposit }} 元</el-descriptions-item>
-          </el-descriptions>
-          <el-form-item label="审核结论" class="mt-4">
-            <el-radio-group v-model="refundReviewForm.approved">
-              <el-radio :value="true">属实，同意退费</el-radio>
-              <el-radio :value="false">不属实，拒绝退费</el-radio>
-            </el-radio-group>
-          </el-form-item>
-          <el-form-item label="处理备注">
-            <el-input v-model="refundReviewForm.note" type="textarea" :rows="2" placeholder="填写审核意见" />
-          </el-form-item>
-          <el-form-item label="处理后车辆">
-            <el-select v-model="refundReviewForm.targetStatus" style="width: 100%">
-              <el-option label="可用" value="available" />
-              <el-option label="维护中" value="maintenance" />
-            </el-select>
-          </el-form-item>
-        </div>
-        <template #footer>
-          <el-button @click="refundReviewVisible = false">取消</el-button>
-          <el-button type="primary" @click="submitRefundReview">确认审核</el-button>
         </template>
       </el-dialog>
     </el-container>
@@ -1083,7 +957,7 @@
 import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { uploadCarPhoto } from '../api'
-import { depositToEscrow, startUsingEscrow, completeEscrowPayment, refundEscrowPayment, queryEscrowState } from '../contracts/escrow'
+import { depositToEscrow, completeEscrowPayment, refundEscrowPayment, queryEscrowState } from '../contracts/escrow'
 
 const props = defineProps({
   session: Object
@@ -1133,15 +1007,6 @@ const issueTypeOptions = [
   { label: '其他故障', value: 'other' }
 ]
 
-// Dispatcher: Refund Review
-const refundReviewVisible = ref(false)
-const refundReviewOrder = ref(null)
-const refundReviewForm = reactive({
-  approved: true,
-  note: '',
-  targetStatus: 'available'
-})
-
 // Renter: Deposit Refund Apply
 const depositRefundApplyVisible = ref(false)
 const depositRefundApplyOrder = ref(null)
@@ -1150,15 +1015,6 @@ const depositRefundApplyForm = reactive({
   note: ''
 })
 const depositRefundApplySubmitting = ref(false)
-
-// Admin: Refund Management
-const refundRequests = ref([])
-const adminRefundVisible = ref(false)
-const adminRefundOrder = ref(null)
-const adminRefundForm = reactive({
-  amount: 0,
-  note: ''
-})
 
 // Admin: Deposit Refund Management
 const depositRefundRequests = ref([])
@@ -1277,7 +1133,6 @@ const handleSelectMenu = (index) => {
   activeMenu.value = index
   if (index === 'overview') loadState()
   if (index === 'admin-chain') loadCarEvidence()
-  if (index === 'admin-refund') loadRefundRequests()
   if (index === 'admin-deposit') loadDepositRefundRequests()
   if (index === 'admin-approve') loadState()
   if (index === 'dispatcher-maint') loadState()
@@ -1675,15 +1530,10 @@ const pickupCar = async () => {
       pickupIot: 'gps_ok,door_unlocked'
     })
 
-    // ② 若配置了托管合约，将状态由 InEscrow 更新为 InUse
+    // ② 若配置了托管合约，链上状态变更延后到完成订单时处理
     const escrowAddr = import.meta.env.VITE_ESCROW_CONTRACT_ADDRESS
     if (escrowAddr) {
-      try {
-        const escrowTx = await startUsingEscrow(currentOrderId.value)
-        ElMessage.success(`取车成功，托管状态已更新（链上交易：${escrowTx.txHash.slice(0, 12)}...）`)
-      } catch {
-        ElMessage.warning('取车成功，但链上状态更新失败，请稍后手动刷新')
-      }
+      ElMessage.success('取车成功，链上状态将在完成订单时一并更新')
     } else {
       ElMessage.success('取车成功，数据已上链')
     }
@@ -1718,7 +1568,7 @@ const submitReportIssue = async () => {
       detail: reportIssueForm.detail.trim(),
       requestRefund: reportIssueForm.requestRefund
     })
-    ElMessage.success(reportIssueForm.requestRefund ? '故障已上报，已提交退费申请' : '故障已上报，调度员会尽快处理')
+    ElMessage.success(reportIssueForm.requestRefund ? '故障已上报，已提交退押金申请' : '故障已上报，调度员会尽快处理')
     reportIssueVisible.value = false
   } catch (error) {
     clearOrderIfNotFound(error)
@@ -1822,7 +1672,7 @@ const submitMaintenance = async () => {
   } catch (error) {}
 }
 
-const resolveDispatcherIssue = async (orderId, targetStatus, refundApproved = null) => {
+const resolveDispatcherIssue = async (orderId, targetStatus) => {
   if (!orderId) return
   const issue = dispatcherIssues.value.find((item) => item.id === orderId)
   if (!issue?.carId) {
@@ -1833,8 +1683,7 @@ const resolveDispatcherIssue = async (orderId, targetStatus, refundApproved = nu
     await api.post(`/dispatcher/issues/${orderId}/resolve`, {
       dispatcher: props.session.username,
       targetStatus,
-      note: targetStatus === 'maintenance' ? '故障转维护处理' : '故障处理完成',
-      refundApproved
+      note: targetStatus === 'maintenance' ? '故障转维护处理' : '故障处理完成'
     })
     if (!hiddenResolvedIssueIds.value.includes(orderId)) {
       hiddenResolvedIssueIds.value = [...hiddenResolvedIssueIds.value, orderId]
@@ -1844,87 +1693,6 @@ const resolveDispatcherIssue = async (orderId, targetStatus, refundApproved = nu
     ElMessage.success('故障工单已处理')
     loadState()
   } catch (error) {}
-}
-
-const openRefundReview = (order) => {
-  refundReviewOrder.value = order
-  refundReviewForm.approved = true
-  refundReviewForm.note = ''
-  refundReviewForm.targetStatus = 'available'
-  refundReviewVisible.value = true
-}
-
-const submitRefundReview = async () => {
-  if (!refundReviewOrder.value) return
-  try {
-    await api.post(`/dispatcher/issues/${refundReviewOrder.value.id}/resolve`, {
-      dispatcher: props.session.username,
-      targetStatus: refundReviewForm.targetStatus,
-      note: refundReviewForm.note,
-      refundApproved: refundReviewForm.approved
-    })
-    ElMessage.success(refundReviewForm.approved ? '已确认退费申请，将提交管理员处理' : '已拒绝退费申请')
-    refundReviewVisible.value = false
-    loadState()
-  } catch (error) {
-    ElMessage.error('审核提交失败')
-  }
-}
-
-const loadRefundRequests = async () => {
-  try {
-    refundRequests.value = await api.get('/admin/refund-requests')
-  } catch (error) {
-    try {
-      const state = await api.get('/state')
-      refundRequests.value = (state.orders || []).filter(
-        (item) => item.refundRequested && item.refundStatus !== 'completed' && item.refundStatus !== 'rejected'
-      )
-    } catch (e) {}
-  }
-}
-
-const refundStatusTagType = (status) => {
-  const map = {
-    'dispatcher_approved': 'success',
-    'completed': 'info',
-    'rejected': 'danger'
-  }
-  return map[status] || 'info'
-}
-
-const openAdminRefund = (order) => {
-  adminRefundOrder.value = order
-  adminRefundForm.amount = order.deposit || 0
-  adminRefundForm.note = ''
-  adminRefundVisible.value = true
-}
-
-const processRefund = async (approved) => {
-  if (!adminRefundOrder.value) return
-  try {
-    const result = await api.post(`/admin/refund/${adminRefundOrder.value.id}`, {
-      adminId: props.session.username,
-      approved,
-      refundAmount: approved ? adminRefundForm.amount : 0,
-      note: adminRefundForm.note
-    })
-    if (approved && result?.ethRefundResult?.txHash) {
-      const txHash = result.ethRefundResult.txHash
-      const ethAmt = result.ethRefundResult.valueEth?.toFixed(5)
-      ElMessage.success({ message: `退费处理完成！已将 ${ethAmt} ETH 退回用户钱包（交易哈希：${txHash}）`, duration: 6000 })
-    } else if (approved) {
-      ElMessage.success('退费处理完成（未发起链上退款，请检查ETH配置）')
-    } else {
-      ElMessage.success('已拒绝退费')
-    }
-    adminRefundVisible.value = false
-    loadRefundRequests()
-    loadState()
-    if (myUserId.value) loadMyOrders()
-  } catch (error) {
-    ElMessage.error('退费处理失败')
-  }
 }
 
 // 退押金相关函数
@@ -2089,35 +1857,6 @@ const submitDepositRefundApply = async () => {
 const getCarStatusLabel = (status) => {
   const map = { available: '可用', reserved: '已预订', in_use: '使用中', maintenance: '维护中' }
   return map[status] || status
-}
-
-const refundStatusLabel = (status) => {
-  const map = {
-    'pending_dispatcher': '待审核',
-    'dispatcher_approved': '已通过',
-    'dispatcher_rejected': '已拒绝',
-    'completed': '已退费',
-    'rejected': '已拒绝'
-  }
-  return map[status] || (status ? status : '待审核')
-}
-
-const getRefundTagType = (status) => {
-  if (!status || status === 'pending_dispatcher') return 'warning'
-  if (status === 'dispatcher_approved') return 'success'
-  if (status === 'dispatcher_rejected' || status === 'rejected') return 'danger'
-  if (status === 'completed') return 'info'
-  return 'warning'
-}
-
-const canReviewRefund = (row) => {
-  // 检查是否有退费申请（支持 boolean 和 number 类型）
-  const hasRefundRequest = row.refundRequested === true || row.refundRequested === 1 || row.refundRequested === '1'
-  if (!hasRefundRequest) return false
-  const status = row.refundStatus
-  // 如果状态为空、null、undefined 或 'pending_dispatcher'，都可以审核
-  if (!status || status === 'pending_dispatcher' || status === '') return true
-  return false
 }
 
 // Wikimedia Commons 实拍图（800px，CC 许可）；国内直连常失败，故配合代理与本地 /cars/photos/CAR-xxx.jpg

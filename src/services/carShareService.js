@@ -413,9 +413,18 @@ class CarShareService {
     order.issueResolvedBy = null;
     order.issueResolveNote = null;
     order.refundRequested = requestRefund;
-    order.refundStatus = requestRefund ? "pending_dispatcher" : null;
+    order.refundStatus = requestRefund ? "pending_admin" : null;
     order.refundDispatcherApproved = null;
     order.refundAdminApproved = null;
+    if (requestRefund) {
+      console.log('[DEBUG] reportIssue - requestRefund:', requestRefund, 'orderId:', orderId);
+      order.depositRefundRequested = true;
+      order.depositRefundStatus = "pending_admin";
+      order.depositRefundReason = "故障退押金";
+      order.depositRefundAppliedAt = Date.now();
+      console.log('[DEBUG] reportIssue - depositRefundRequested set to:', order.depositRefundRequested);
+      console.log('[DEBUG] reportIssue - depositRefundStatus set to:', order.depositRefundStatus);
+    }
     const car = this.cars.find((item) => item.id === order.carId);
     if (car && car.status === "in_use") {
       car.status = "maintenance";
@@ -428,6 +437,7 @@ class CarShareService {
     });
     await this.ledger.commitBlock("operator-node", "issue-reported");
     await this.saveData();
+    console.log('[DEBUG] reportIssue - order saved, depositRefundRequested:', order.depositRefundRequested, 'depositRefundStatus:', order.depositRefundStatus);
     return order;
   }
 
@@ -462,10 +472,6 @@ class CarShareService {
     order.issueResolvedAt = Date.now();
     order.issueResolvedBy = dispatcher || "dispatcher";
     order.issueResolveNote = note || "";
-    order.refundDispatcherApproved = order.refundRequested ? refundApproved : null;
-    if (order.refundRequested) {
-      order.refundStatus = refundApproved ? "dispatcher_approved" : "dispatcher_rejected";
-    }
 
     const maintenanceLog = {
       id: crypto.randomUUID(),
@@ -483,9 +489,7 @@ class CarShareService {
       carId: car.id,
       dispatcher: order.issueResolvedBy,
       targetStatus: finalStatus,
-      note: order.issueResolveNote,
-      refundApproved,
-      refundStatus: order.refundStatus
+      note: order.issueResolveNote
     });
     await this.ledger.commitBlock("municipal-node", "issue-resolved");
     await this.saveData();
@@ -665,8 +669,19 @@ class CarShareService {
    */
   async listDepositRefundRequests() {
     await this.refreshState();
-    return this.orders
-      .filter((item) => item.depositRefundRequested && item.depositRefundStatus !== "completed" && item.depositRefundStatus !== "rejected")
+    const allOrdersWithRefund = this.orders.filter((item) => item.depositRefundRequested);
+    const pendingOrders = this.orders.filter(
+      (item) => item.depositRefundRequested && item.depositRefundStatus !== "completed" && item.depositRefundStatus !== "rejected"
+    );
+    console.log('[DEBUG] listDepositRefundRequests - total orders:', this.orders.length);
+    console.log('[DEBUG] listDepositRefundRequests - orders with depositRefundRequested:', allOrdersWithRefund.length);
+    console.log('[DEBUG] listDepositRefundRequests - pending orders:', pendingOrders.length);
+    if (allOrdersWithRefund.length > 0) {
+      allOrdersWithRefund.forEach(order => {
+        console.log('[DEBUG] order:', order.id, 'depositRefundRequested:', order.depositRefundRequested, 'depositRefundStatus:', order.depositRefundStatus);
+      });
+    }
+    return pendingOrders
       .map((order) => {
         const user = this.users.find(u => u.id === order.userId);
         return {
@@ -745,6 +760,19 @@ class CarShareService {
         note: order.depositRefundNote
       });
       await this.ledger.commitBlock("operator-node", "deposit-refund-completed");
+
+      // 自动完成订单：用户上报故障退款成功后，订单自动变为已完成
+      // 注意：车辆状态保持维修中，由调度员维修后手动修改
+      order.status = "completed";
+      order.completedAt = Date.now();
+      // 设置默认的还车信息（故障订单无需实际拍照存证）
+      if (!order.returnPhotoHash) {
+        order.returnPhotoHash = 'auto_completed_from_issue';
+      }
+      if (!order.returnIot) {
+        order.returnIot = 'auto_completed_from_issue';
+      }
+      console.log(`[processDepositRefund] 订单 ${orderId} 已自动完成，车辆保持维修中`);
     } else {
       await this.ledger.queueTransaction("deposit_refund_rejected", {
         orderId,
