@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const ConsortiumLedger = require("../blockchain/ledger");
 const DataStore = require("../utils/dataStore");
 const { sendRefundToWallet } = require("../utils/ethRefund");
+const { refundViaContract, cancelViaContract } = require("../utils/ethEscrow");
 
 class CarShareService {
   constructor() {
@@ -508,8 +509,7 @@ class CarShareService {
     const usageFee = useHours * this.pricePerHour;
     const damageFee = order.issueReported ? this.damageFee : 0;
     order.finalFee = usageFee + damageFee;
-    const remaining = Math.max(0, order.finalFee - order.deposit);
-    order.usageFeePaid = remaining === 0;
+    order.usageFeePaid = false;
     const car = this.cars.find((item) => item.id === order.carId);
     car.status = "available";
     car.battery = Math.max(10, car.battery - Math.floor(Math.random() * 25));
@@ -519,8 +519,9 @@ class CarShareService {
       returnIot,
       actualMinutes,
       finalFee: order.finalFee,
-      depositReturned: Math.max(0, order.deposit - damageFee),
-      remaining
+      depositAmount: order.deposit,
+      usageFee,
+      damageFee
     });
     await this.ledger.commitBlock("insurance-node", "return-settlement");
     await this.saveData();
@@ -528,8 +529,8 @@ class CarShareService {
       ...order,
       actualMinutes,
       usageFee,
-      depositPaid: order.deposit,
-      remaining,
+      depositAmount: order.deposit,
+      remaining: usageFee,
       damageFee
     };
   }
@@ -618,7 +619,143 @@ class CarShareService {
 
   async listRefundRequests() {
     await this.refreshState();
-    return this.orders.filter((item) => item.refundRequested && item.refundStatus === "dispatcher_approved");
+    return this.orders.filter(
+      (item) => item.refundRequested && item.refundStatus !== "completed" && item.refundStatus !== "rejected"
+    );
+  }
+
+  /**
+   * 申请退押金（正常还车后的押金退还申请）
+   * @param {string} orderId - 订单ID
+   * @param {string} reason - 退押金原因
+   */
+  async applyForDepositRefund(orderId, reason = '') {
+    await this.refreshState();
+    const order = this.orders.find((item) => item.id === orderId);
+    if (!order) {
+      throw new Error("订单不存在");
+    }
+    if (order.status !== "completed") {
+      throw new Error("只有已完成的订单才能申请退押金");
+    }
+    if (order.depositRefundRequested) {
+      throw new Error("该订单已申请过退押金");
+    }
+    if (!order.deposit || order.deposit <= 0) {
+      throw new Error("该订单没有押金可退");
+    }
+
+    order.depositRefundRequested = true;
+    order.depositRefundStatus = 'pending_admin';
+    order.depositRefundReason = reason || '正常退押金';
+    order.depositRefundAppliedAt = Date.now();
+
+    await this.ledger.queueTransaction("deposit_refund_applied", {
+      orderId,
+      reason: order.depositRefundReason,
+      depositAmount: order.deposit
+    });
+    await this.ledger.commitBlock("operator-node", "deposit-refund-apply");
+    await this.saveData();
+    return order;
+  }
+
+  /**
+   * 获取所有待审核的退押金申请
+   */
+  async listDepositRefundRequests() {
+    await this.refreshState();
+    return this.orders
+      .filter((item) => item.depositRefundRequested && item.depositRefundStatus !== "completed" && item.depositRefundStatus !== "rejected")
+      .map((order) => {
+        const user = this.users.find(u => u.id === order.userId);
+        return {
+          ...order,
+          user: user ? {
+            id: user.id,
+            name: user.name,
+            walletAddress: user.walletAddress
+          } : null
+        };
+      })
+      .sort((a, b) => (b.depositRefundAppliedAt || 0) - (a.depositRefundAppliedAt || 0));
+  }
+
+  /**
+   * 管理员审核退押金申请
+   * @param {string} orderId - 订单ID
+   * @param {string} adminId - 管理员ID
+   * @param {boolean} approved - 是否批准
+   * @param {string} note - 审核备注
+   */
+  async processDepositRefund(orderId, adminId, approved, note = '', txHash = null) {
+    await this.refreshState();
+    const order = this.orders.find((item) => item.id === orderId);
+    if (!order) {
+      throw new Error("订单不存在");
+    }
+    if (!order.depositRefundRequested) {
+      throw new Error("该订单没有申请退押金");
+    }
+    if (order.depositRefundStatus === "completed" || order.depositRefundStatus === "rejected") {
+      throw new Error("该退押金申请已处理");
+    }
+
+    order.depositRefundStatus = approved ? "completed" : "rejected";
+    order.depositRefundProcessedAt = Date.now();
+    order.depositRefundProcessedBy = adminId;
+    order.depositRefundNote = note || '';
+
+    if (approved) {
+      const depositEth = order.deposit / this.ethRefundCnyRate;
+      const user = this.users.find(u => u.id === order.userId);
+      const userWallet = user?.walletAddress || null;
+
+      // 优先使用前端 MetaMask 已提交的链上交易哈希
+      if (txHash) {
+        order.depositRefundTxHash = txHash;
+        order.depositRefundTo = userWallet;
+        order.depositEthAmount = depositEth;
+        console.log(`[processDepositRefund] 使用 MetaMask 交易哈希: ${txHash}`);
+      } else {
+        // 降级：后端自动通过托管合约或系统钱包转账
+        console.warn("[processDepositRefund] 未提供 txHash，尝试后端自动退款");
+        const escrowResult = await refundViaContract(orderId, "退押金审核通过");
+        if (escrowResult?.txHash) {
+          order.depositEscrowRefundTxHash = escrowResult.txHash;
+          order.depositEthAmount = depositEth;
+          console.log(`[processDepositRefund] 托管合约退押金成功，txHash: ${escrowResult.txHash}`);
+        } else {
+          const directResult = await sendRefundToWallet(userWallet, depositEth);
+          order.depositRefundTxHash = directResult?.txHash || null;
+          order.depositRefundTo = userWallet;
+          order.depositEthAmount = depositEth;
+          if (directResult?.error) {
+            console.error(`[processDepositRefund] 后端退款失败: ${directResult.error}`);
+          }
+        }
+      }
+
+      await this.ledger.queueTransaction("deposit_refund_completed", {
+        orderId,
+        adminId,
+        depositAmount: order.deposit,
+        ethAmount: order.depositEthAmount,
+        txHash: order.depositRefundTxHash || order.depositEscrowRefundTxHash || null,
+        note: order.depositRefundNote
+      });
+      await this.ledger.commitBlock("operator-node", "deposit-refund-completed");
+    } else {
+      await this.ledger.queueTransaction("deposit_refund_rejected", {
+        orderId,
+        adminId,
+        reason: order.depositRefundNote || "审核拒绝"
+      });
+      await this.ledger.commitBlock("municipal-node", "deposit-refund-rejected");
+    }
+
+    await this.saveData();
+    return { ...order };
   }
 
   getUserWallet(userId) {
@@ -637,6 +774,34 @@ class CarShareService {
     return user;
   }
 
+  /**
+   * 记录用户存入托管合约的交易哈希
+   */
+  async recordEscrowDeposit(orderId, txHash) {
+    await this.refreshState();
+    const order = this.orders.find((item) => item.id === orderId);
+    if (!order) {
+      throw new Error("订单不存在");
+    }
+    order.escrowDepositTxHash = txHash || null;
+    await this.saveData();
+    return order;
+  }
+
+  /**
+   * 记录用户完成订单时释放托管资金到平台地址的交易哈希
+   */
+  async recordEscrowCompleted(orderId, txHash) {
+    await this.refreshState();
+    const order = this.orders.find((item) => item.id === orderId);
+    if (!order) {
+      throw new Error("订单不存在");
+    }
+    order.escrowCompletedTxHash = txHash || null;
+    await this.saveData();
+    return order;
+  }
+
   async processRefund(orderId, adminId, approved, refundAmount, note) {
     await this.refreshState();
     const order = this.orders.find((item) => item.id === orderId);
@@ -645,9 +810,6 @@ class CarShareService {
     }
     if (!order.refundRequested) {
       throw new Error("该订单没有申请退费");
-    }
-    if (order.refundStatus !== "dispatcher_approved") {
-      throw new Error("退费申请尚未通过调度员审核");
     }
     order.refundAdminApproved = approved;
     order.refundStatus = approved ? "completed" : "rejected";
@@ -658,16 +820,27 @@ class CarShareService {
 
     const car = this.cars.find((item) => item.id === order.carId);
 
-    let ethRefundResult = null;
-
     if (approved) {
       const user = this.users.find((u) => u.id === order.userId);
-      const userWallet = user?.walletAddress || null;
       const depositEth = this.depositAmount / this.ethRefundCnyRate;
-      ethRefundResult = await sendRefundToWallet(userWallet, depositEth);
-      order.ethRefundTxHash = ethRefundResult?.txHash || null;
-      order.ethRefundTo = userWallet;
-      order.ethRefundAmount = depositEth;
+
+      // 优先通过托管合约退费（原路退回用户，不走系统钱包）
+      const escrowResult = await refundViaContract(orderId, order.refundNote || "故障退费");
+      if (escrowResult?.txHash) {
+        order.escrowRefundTxHash = escrowResult.txHash;
+        order.ethRefundAmount = depositEth;
+        order.ethRefundTo = user?.walletAddress || null;
+        order.ethRefundTxHash = escrowResult.txHash;
+        console.log(`[processRefund] 合约退费成功，txHash: ${escrowResult.txHash}`);
+      } else {
+        // 合约退费失败时降级为系统钱包直接转账（兼容旧逻辑）
+        console.warn("[processRefund] 合约退费失败，降级为系统钱包直接转账");
+        const userWallet = user?.walletAddress || null;
+        const directResult = await sendRefundToWallet(userWallet, depositEth);
+        order.ethRefundTxHash = directResult?.txHash || null;
+        order.ethRefundTo = userWallet;
+        order.ethRefundAmount = depositEth;
+      }
 
       // 退费成功后，将订单状态改为已完成，车辆状态改为可用
       order.status = "completed";
@@ -680,10 +853,15 @@ class CarShareService {
         adminId,
         amount: refundAmount,
         note: order.refundNote,
-        ethTxHash: ethRefundResult?.txHash || null
+        ethTxHash: order.ethRefundTxHash || null
       });
       await this.ledger.commitBlock("operator-node", "refund-completed");
     } else {
+      // 管理员拒绝退费：若订单走的是托管合约，取消托管
+      if (order.escrowDepositTxHash) {
+        await cancelViaContract(orderId, "管理员拒绝退费");
+      }
+
       await this.ledger.queueTransaction("refund_rejected", {
         orderId,
         adminId,
@@ -693,7 +871,7 @@ class CarShareService {
     }
 
     await this.saveData();
-    return { ...order, ethRefundResult };
+    return { ...order };
   }
 
   async getCarEvidence() {

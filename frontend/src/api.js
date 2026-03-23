@@ -17,9 +17,10 @@ api.interceptors.response.use(
     if (!suppressError) {
       ElMessage.error(msg)
     }
-    // 保留完整错误对象，让调用方可以访问 error.response.data
+    // 保留完整错误对象，让调用方可以访问 error.response.data / status
     const err = new Error(msg)
     err._data = error.response?.data
+    err.status = error.response?.status
     return Promise.reject(err)
   }
 )

@@ -63,6 +63,10 @@
               <el-icon><Wallet /></el-icon>
               <span>退费管理</span>
             </el-menu-item>
+            <el-menu-item index="admin-deposit">
+              <el-icon><Coin /></el-icon>
+              <span>退押金管理</span>
+            </el-menu-item>
           </template>
 
           <template v-if="session.role === 'dispatcher'">
@@ -288,6 +292,14 @@
               <el-form-item label="订单ID">
                 <el-input v-model="currentOrderId" placeholder="创建订单后自动填入" />
               </el-form-item>
+              <el-form-item v-if="currentOrderId && currentOrderEscrowTxHash" label="托管状态">
+                <el-tag :type="currentOrderEscrowStateTagType" size="small">
+                  {{ currentOrderEscrowStateLabel }}
+                </el-tag>
+                <span v-if="currentOrderEscrowTxHash" style="margin-left: 8px; font-size: 11px; color: #909399;">
+                  押金TX：{{ currentOrderEscrowTxHash.slice(0, 10) }}...
+                </span>
+              </el-form-item>
               <el-form-item>
                 <div class="order-action-row">
                   <el-button type="success" @click="pickupCar" :disabled="!currentOrderId">取车存证</el-button>
@@ -325,25 +337,77 @@
                 {{ row.finalFee ?? '-' }}
               </template>
             </el-table-column>
-            <el-table-column label="退费状态" width="200">
+            <el-table-column label="退押金状态" width="160">
               <template #default="{ row }">
                 <el-tag
-                  v-if="row.refundRequested || row.refundRequested === 1"
-                  :type="getRefundTagType(row.refundStatus)"
+                  v-if="row.depositRefundRequested"
+                  :type="depositRefundStatusTagType(row.depositRefundStatus)"
                   size="small"
                 >
-                  {{ refundStatusLabel(row.refundStatus) }}
+                  {{ depositRefundStatusLabel(row.depositRefundStatus) }}
                 </el-tag>
-                <span v-else style="color: #909399;">无</span>
-                <div v-if="row.refundStatus === 'completed' && row.ethRefundTxHash" style="margin-top: 4px;">
+                <span v-else-if="row.status === 'completed' && !row.depositRefundRequested" style="color: #909399;">—</span>
+                <div v-if="row.depositRefundStatus === 'completed' && row.depositEthAmount" style="margin-top: 4px;">
                   <span style="font-size: 11px; color: #67c23a;">
-                    +{{ row.ethRefundAmount?.toFixed(5) }} ETH
+                    +{{ row.depositEthAmount?.toFixed(5) }} ETH
                   </span>
                 </div>
               </template>
             </el-table-column>
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="row.status === 'completed' && !row.depositRefundRequested && row.deposit > 0"
+                  size="small"
+                  type="warning"
+                  @click="openDepositRefundApplyDialog(row)"
+                >
+                  申请退押金
+                </el-button>
+                <span v-else-if="row.depositRefundRequested" style="color: #909399; font-size: 12px;">
+                  {{ row.depositRefundStatus === 'completed' ? '已退款' : row.depositRefundStatus === 'pending_admin' ? '审核中' : '已拒绝' }}
+                </span>
+                <span v-else style="color: #c0c4cc;">—</span>
+              </template>
+            </el-table-column>
           </el-table>
         </el-card>
+
+        <!-- Renter: Deposit Refund Apply Dialog -->
+        <el-dialog v-model="depositRefundApplyVisible" title="申请退押金" width="480px" align-center>
+          <div v-if="depositRefundApplyOrder" class="deposit-refund-apply">
+            <el-descriptions :column="1" border class="mb-4">
+              <el-descriptions-item label="订单ID">{{ depositRefundApplyOrder.id }}</el-descriptions-item>
+              <el-descriptions-item label="押金金额">
+                <span style="color: #f56c6c; font-weight: bold;">¥{{ depositRefundApplyOrder.deposit || 0 }}</span>
+              </el-descriptions-item>
+            </el-descriptions>
+            <el-form :model="depositRefundApplyForm" label-width="100px">
+              <el-form-item label="退押金原因">
+                <el-select v-model="depositRefundApplyForm.reason" placeholder="请选择退押金原因" style="width: 100%">
+                  <el-option label="正常还车退押金" value="正常退押金" />
+                  <el-option label="提前取消订单" value="提前取消订单" />
+                  <el-option label="其他原因" value="其他原因" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="补充说明">
+                <el-input
+                  v-model="depositRefundApplyForm.note"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="如有其他说明，请在此填写（可选）"
+                />
+              </el-form-item>
+            </el-form>
+            <el-alert type="info" :closable="false" description="提交后，管理员将审核您的退押金申请，通过后押金将退还至您的钱包。" />
+          </div>
+          <template #footer>
+            <el-button @click="depositRefundApplyVisible = false">取消</el-button>
+            <el-button type="primary" @click="submitDepositRefundApply" :loading="depositRefundApplySubmitting">
+              提交申请
+            </el-button>
+          </template>
+        </el-dialog>
 
         <!-- Admin: Approve -->
         <el-card v-if="activeMenu === 'admin-approve'" header="审批用户资质" shadow="hover" class="action-card">
@@ -636,6 +700,178 @@
           </el-dialog>
         </el-card>
 
+        <!-- Admin: Deposit Refund Management -->
+        <el-card v-if="activeMenu === 'admin-deposit'" header="退押金管理" shadow="hover" class="action-card">
+          <el-alert type="info" :closable="false" class="mb-4">
+            退押金管理：审核用户正常还车后的押金退还申请
+          </el-alert>
+          <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <el-button type="primary" size="small" @click="loadDepositRefundRequests">
+              刷新列表
+            </el-button>
+            <el-button
+              v-if="props.session.role === 'admin'"
+              size="small"
+              :type="renterWallet ? 'success' : 'warning'"
+              @click="connectWallet"
+            >
+              {{ renterWallet ? `已连接: ${formatWallet(renterWallet)}` : '连接 MetaMask（管理员退款用）' }}
+            </el-button>
+            <span v-if="renterWallet && props.session.role === 'admin'" style="font-size: 12px; color: #67c23a;">
+              ✓ 可进行退押金审核
+            </span>
+            <span v-else-if="props.session.role === 'admin'" style="font-size: 12px; color: #e6a23c;">
+              ⚠ 连接钱包后才可审核退押金
+            </span>
+          </div>
+
+          <el-empty v-if="depositRefundRequests.length === 0" description="暂无待处理的退押金申请" />
+
+          <el-table v-else :data="depositRefundRequests" style="width: 100%" v-loading="loadingDepositRefund">
+            <el-table-column prop="id" label="订单ID" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="carId" label="车辆ID" width="90" />
+            <el-table-column prop="userId" label="用户ID" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="deposit" label="押金金额" width="100">
+              <template #default="{ row }">
+                <span style="color: #f56c6c; font-weight: bold;">¥{{ row.deposit || 0 }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="depositRefundReason" label="退押金原因" min-width="140">
+              <template #default="{ row }">
+                {{ row.depositRefundReason || '正常退押金' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="用户钱包" width="180">
+              <template #default="{ row }">
+                <span v-if="row.user?.walletAddress || row.userWallet" style="font-size: 11px; word-break: break-all;">
+                  <el-tag type="success" size="small">{{ (row.user?.walletAddress || row.userWallet).slice(0, 10) }}...{{ (row.user?.walletAddress || row.userWallet).slice(-6) }}</el-tag>
+                </span>
+                <span v-else style="color: #f56c6c; font-size: 11px;">
+                  <el-tag type="danger" size="small">未绑定</el-tag>
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="depositRefundAppliedAt" label="申请时间" width="170">
+              <template #default="{ row }">
+                {{ formatTime(row.depositRefundAppliedAt) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="120">
+              <template #default="{ row }">
+                <el-tag :type="depositRefundStatusTagType(row.depositRefundStatus)" size="small">
+                  {{ depositRefundStatusLabel(row.depositRefundStatus) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="ETH退款" width="220">
+              <template #default="{ row }">
+                <div v-if="row.depositRefundStatus === 'completed'">
+                  <span v-if="row.depositEthAmount" style="color: #67c23a; font-size: 12px;">
+                    {{ row.depositEthAmount.toFixed(5) }} ETH
+                  </span>
+                  <span v-if="row.depositRefundTxHash" style="display: block; font-size: 11px; word-break: break-all;">
+                    <a :href="`https://etherscan.io/tx/${row.depositRefundTxHash}`" target="_blank" style="color: #409eff;">
+                      {{ formatWallet(row.depositRefundTxHash) }}
+                    </a>
+                  </span>
+                  <span v-if="row.depositEscrowRefundTxHash" style="display: block; font-size: 11px; word-break: break-all;">
+                    合约: <a :href="`https://etherscan.io/tx/${row.depositEscrowRefundTxHash}`" target="_blank" style="color: #409eff;">
+                      {{ formatWallet(row.depositEscrowRefundTxHash) }}
+                    </a>
+                  </span>
+                  <span v-else-if="!row.depositRefundTxHash" style="color: #909399; font-size: 12px;">—</span>
+                </div>
+                <span v-else style="color: #c0c4cc;">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="审核信息" width="150">
+              <template #default="{ row }">
+                <span v-if="row.depositRefundProcessedAt" style="font-size: 12px; color: #909399;">
+                  {{ row.depositRefundProcessedBy }}<br/>
+                  {{ formatTime(row.depositRefundProcessedAt) }}
+                </span>
+                <span v-else style="color: #c0c4cc;">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="160" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  v-if="row.depositRefundStatus === 'pending_admin'"
+                  size="small"
+                  type="primary"
+                  @click="openDepositRefundDialog(row)"
+                >
+                  审核退押金
+                </el-button>
+                <span v-else style="color: #909399; font-size: 12px;">
+                  {{ row.depositRefundStatus === 'completed' ? '已退款' : '已拒绝' }}
+                </span>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <!-- Deposit Refund Dialog -->
+          <el-dialog v-model="depositRefundVisible" title="退押金审核" width="560px" align-center>
+            <div v-if="depositRefundOrder" class="deposit-refund-detail">
+              <el-descriptions :column="1" border class="mb-4">
+                <el-descriptions-item label="订单ID">{{ depositRefundOrder.id }}</el-descriptions-item>
+                <el-descriptions-item label="车辆ID">{{ depositRefundOrder.carId }}</el-descriptions-item>
+                <el-descriptions-item label="用户ID">{{ depositRefundOrder.userId }}</el-descriptions-item>
+                <el-descriptions-item label="用户钱包">
+                  <span v-if="depositRefundOrder.user?.walletAddress || depositRefundOrder.userWallet">
+                    <el-tag type="success">{{ depositRefundOrder.user?.walletAddress || depositRefundOrder.userWallet }}</el-tag>
+                  </span>
+                  <el-tag v-else type="danger">未绑定钱包</el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="退押金原因">{{ depositRefundOrder.depositRefundReason || '正常退押金' }}</el-descriptions-item>
+                <el-descriptions-item label="押金金额">
+                  <span style="color: #f56c6c; font-weight: bold; font-size: 16px;">¥{{ depositRefundOrder.deposit || 0 }}</span>
+                  <span style="color: #67c23a; margin-left: 8px;">≈ {{ ((depositRefundOrder.deposit || 0) / 2500).toFixed(5) }} ETH</span>
+                </el-descriptions-item>
+                <el-descriptions-item label="申请时间">{{ formatTime(depositRefundOrder.depositRefundAppliedAt) }}</el-descriptions-item>
+              </el-descriptions>
+
+              <el-form :model="depositRefundForm" label-width="100px">
+                <el-form-item label="审核结论">
+                  <el-radio-group v-model="depositRefundForm.approved">
+                    <el-radio :value="true" type="success">批准退款</el-radio>
+                    <el-radio :value="false" type="danger">拒绝退款</el-radio>
+                  </el-radio-group>
+                </el-form-item>
+                <el-form-item label="处理备注">
+                  <el-input
+                    v-model="depositRefundForm.note"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="请填写审核意见，如拒绝原因等"
+                  />
+                </el-form-item>
+              </el-form>
+
+              <el-alert
+                v-if="depositRefundForm.approved"
+                title="退款说明"
+                type="success"
+                :closable="false"
+                :description="`点击「确认提交」后，将弹出 MetaMask 确认转账（约 ${((depositRefundOrder.deposit || 0) / 2500).toFixed(5)} ETH 到用户钱包：${depositRefundOrder.user?.walletAddress || depositRefundOrder.userWallet || '未绑定' }）`"
+              />
+              <el-alert
+                v-else
+                title="拒绝说明"
+                type="warning"
+                :closable="false"
+                description="拒绝后，押金将不会退还给用户，请确认操作"
+              />
+            </div>
+            <template #footer>
+              <el-button @click="depositRefundVisible = false">取消</el-button>
+              <el-button type="primary" @click="submitDepositRefund" :loading="depositRefundSubmitting">
+                确认提交
+              </el-button>
+            </template>
+          </el-dialog>
+        </el-card>
+
         <!-- Dispatcher: Maintenance -->
         <el-card v-if="activeMenu === 'dispatcher-maint'" header="车辆调度与维护" shadow="hover" class="action-card">
           <el-card shadow="never" class="mb-4" header="待处理故障工单">
@@ -847,6 +1083,7 @@
 import { ref, computed, onMounted, onUnmounted, reactive, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import api, { uploadCarPhoto } from '../api'
+import { depositToEscrow, startUsingEscrow, completeEscrowPayment, refundEscrowPayment, queryEscrowState } from '../contracts/escrow'
 
 const props = defineProps({
   session: Object
@@ -905,6 +1142,15 @@ const refundReviewForm = reactive({
   targetStatus: 'available'
 })
 
+// Renter: Deposit Refund Apply
+const depositRefundApplyVisible = ref(false)
+const depositRefundApplyOrder = ref(null)
+const depositRefundApplyForm = reactive({
+  reason: '正常退押金',
+  note: ''
+})
+const depositRefundApplySubmitting = ref(false)
+
 // Admin: Refund Management
 const refundRequests = ref([])
 const adminRefundVisible = ref(false)
@@ -913,6 +1159,17 @@ const adminRefundForm = reactive({
   amount: 0,
   note: ''
 })
+
+// Admin: Deposit Refund Management
+const depositRefundRequests = ref([])
+const depositRefundVisible = ref(false)
+const depositRefundOrder = ref(null)
+const depositRefundForm = reactive({
+  approved: true,
+  note: ''
+})
+const depositRefundSubmitting = ref(false)
+const loadingDepositRefund = ref(false)
 
 // Admin car management
 const allCars = ref([])
@@ -965,6 +1222,36 @@ const dispatcherIssues = computed(() =>
 )
 const walletShort = computed(() => formatWallet(renterWallet.value))
 const walletDisplay = computed(() => renterWallet.value || '未连接')
+
+// 当前订单的链上托管押金交易哈希
+const currentOrderEscrowTxHash = computed(() => {
+  if (!currentOrderId.value) return null
+  const order = (systemState.value.orders || []).find(o => o.id === currentOrderId.value)
+  return order?.escrowDepositTxHash || null
+})
+
+// 当前订单的链上托管状态描述
+const ESCROW_STATE_LABELS = {
+  0: '已托管(待取车)', 1: '使用中', 2: '已完成(已释放)', 3: '已退费', 4: '已取消', null: '未托管'
+}
+const currentOrderEscrowStateLabel = computed(() => {
+  if (!currentOrderId.value) return '无订单'
+  const order = (systemState.value.orders || []).find(o => o.id === currentOrderId.value)
+  if (!order) return '订单未找到'
+  // 若有完成退款的链上哈希，则为已完成/退费态
+  if (order.refundStatus === 'completed') return '已退费'
+  if (order.escrowCompletedTxHash) return '已完成(已释放)'
+  if (order.escrowDepositTxHash) return '已托管(待取车)'
+  return '未托管'
+})
+const currentOrderEscrowStateTagType = computed(() => {
+  const label = currentOrderEscrowStateLabel.value
+  if (label === '已退费') return 'danger'
+  if (label === '已完成(已释放)') return 'success'
+  if (label === '已托管(待取车)') return 'warning'
+  return 'info'
+})
+
 const paymentPreview = computed(() => {
   const total = depositEth + Number(rentForm.hours || 1) * rateEthPerHour
   return `${total.toFixed(4)} ETH（含押金 ${depositEth.toFixed(4)} ETH）`
@@ -991,6 +1278,7 @@ const handleSelectMenu = (index) => {
   if (index === 'overview') loadState()
   if (index === 'admin-chain') loadCarEvidence()
   if (index === 'admin-refund') loadRefundRequests()
+  if (index === 'admin-deposit') loadDepositRefundRequests()
   if (index === 'admin-approve') loadState()
   if (index === 'dispatcher-maint') loadState()
   if (index === 'admin-cars') loadAllCars()
@@ -1279,6 +1567,31 @@ const payByMetaMask = async (ethAmount) => {
   return txHash
 }
 
+// 管理员通过 MetaMask 退还押金给用户
+const refundByMetaMask = async (fromAddress, toAddress, ethAmount) => {
+  if (!window.ethereum) {
+    throw new Error('未检测到 MetaMask，请先安装插件')
+  }
+  if (!fromAddress) {
+    throw new Error('请先在页面顶部连接 MetaMask 钱包')
+  }
+  if (!toAddress) {
+    throw new Error('用户未绑定钱包地址，无法退款')
+  }
+
+  const txHash = await window.ethereum.request({
+    method: 'eth_sendTransaction',
+    params: [
+      {
+        from: fromAddress,
+        to: toAddress,
+        value: decimalEthToWeiHex(ethAmount)
+      }
+    ]
+  })
+  return txHash
+}
+
 const createOrder = async () => {
   if (!myUserId.value || !rentForm.carId) {
     ElMessage.warning('请确保填写用户ID并选择车辆')
@@ -1296,22 +1609,54 @@ const createOrder = async () => {
         ElMessage.warning('请先连接 MetaMask 钱包')
         return
       }
-      const payAmount = depositEth
-      txHash = await payByMetaMask(payAmount)
-      ElMessage.success(`押金支付成功，交易哈希：${txHash.slice(0, 12)}...`)
+      // ① 先在后端创建订单，获取订单 UUID
+      const orderRes = await api.post('/orders', {
+        userId: myUserId.value,
+        carId: rentForm.carId,
+        hours: rentForm.hours,
+        txHash: null
+      })
+      currentOrderId.value = orderRes.id
+
+      // ② 押金存入托管合约（资金锁在合约中，不直接打给平台）
+      const escrowContractAddress = import.meta.env.VITE_ESCROW_CONTRACT_ADDRESS
+      if (escrowContractAddress) {
+        const escrowResult = await depositToEscrow(orderRes.id, depositEth)
+        txHash = escrowResult.txHash
+        ElMessage.success(`押金已存入托管合约，交易哈希：${txHash.slice(0, 12)}...`)
+
+        // ③ 将链上交易哈希回传后端记录
+        await api.post(`/orders/${orderRes.id}/escrow-tx`, { txHash })
+      } else {
+        // 未配置合约时降级为直接转账（兼容旧逻辑）
+        const payAmount = depositEth
+        txHash = await payByMetaMask(payAmount)
+        ElMessage.success(`押金支付成功，交易哈希：${txHash.slice(0, 12)}...`)
+        await api.post(`/orders/${orderRes.id}/escrow-tx`, { txHash })
+      }
+      ElMessage.success('订单创建成功')
+    } else {
+      // 非租客角色直接建单（管理员/调度员等）
+      const res = await api.post('/orders', {
+        userId: myUserId.value,
+        carId: rentForm.carId,
+        hours: rentForm.hours,
+        txHash: null
+      })
+      currentOrderId.value = res.id
+      ElMessage.success('订单创建成功')
     }
-    const res = await api.post('/orders', {
-      userId: myUserId.value,
-      carId: rentForm.carId,
-      hours: rentForm.hours,
-      txHash
-    })
-    currentOrderId.value = res.id
-    ElMessage.success('订单创建成功')
     persistRenterState()
     loadState()
     loadMyOrders()
-  } catch (error) {}
+  } catch (error) {
+    if (error?.message?.includes('User rejected') || error?.code === 4001) {
+      ElMessage.error('用户拒绝了交易，订单已取消')
+      currentOrderId.value = ''
+    } else {
+      ElMessage.error(error?.message || '订单创建失败')
+    }
+  }
 }
 
 const clearOrderIfNotFound = (error) => {
@@ -1324,11 +1669,24 @@ const clearOrderIfNotFound = (error) => {
 
 const pickupCar = async () => {
   try {
+    // ① 后端记录取车
     await api.post(`/orders/${currentOrderId.value}/pickup`, {
       pickupPhotoHash: 'hash_front_door',
       pickupIot: 'gps_ok,door_unlocked'
     })
-    ElMessage.success('取车成功，数据已上链')
+
+    // ② 若配置了托管合约，将状态由 InEscrow 更新为 InUse
+    const escrowAddr = import.meta.env.VITE_ESCROW_CONTRACT_ADDRESS
+    if (escrowAddr) {
+      try {
+        const escrowTx = await startUsingEscrow(currentOrderId.value)
+        ElMessage.success(`取车成功，托管状态已更新（链上交易：${escrowTx.txHash.slice(0, 12)}...）`)
+      } catch {
+        ElMessage.warning('取车成功，但链上状态更新失败，请稍后手动刷新')
+      }
+    } else {
+      ElMessage.success('取车成功，数据已上链')
+    }
     loadState()
   } catch (error) {
     clearOrderIfNotFound(error)
@@ -1376,25 +1734,23 @@ const returnCar = async () => {
       returnPhotoHash: 'hash_returned',
       returnIot: 'gps_ok,door_locked'
     })
-    if (res.remaining > 0) {
-      const remainingEth = res.remaining / (Number(import.meta.env.VITE_ETH_CNY_RATE) || 2500)
-      ElMessage.warning({
-        message: `还车成功！应付差额 ${res.remaining} 元（约 ${remainingEth.toFixed(4)} ETH），请在下方完成付款`,
-        duration: 5000
-      })
-      const confirmed = await ElMessageBox.confirm(
-        `应付差额：${res.remaining} 元（约 ${remainingEth.toFixed(4)} ETH）\n\n是否现在用 MetaMask 支付？`,
-        '请完成付款',
-        { confirmButtonText: '立即支付', cancelButtonText: '稍后支付', type: 'warning' }
-      ).catch(() => false)
-      if (confirmed) {
-        const txHash = await payByMetaMask(remainingEth)
-        await api.post(`/orders/${currentOrderId.value}/pay-usage-fee`, { txHash })
-        ElMessage.success(`差额支付成功，交易哈希：${txHash.slice(0, 12)}...`)
-      }
+    ElMessage.success(`还车成功！使用费 ${res.usageFee} 元，请完成付款`)
+
+    const usageFeeEth = res.usageFee / (Number(import.meta.env.VITE_ETH_CNY_RATE) || 2500)
+    const confirmed = await ElMessageBox.confirm(
+      `应付使用费：${res.usageFee} 元（约 ${usageFeeEth.toFixed(4)} ETH）\n\n是否现在用 MetaMask 支付？`,
+      '请完成付款',
+      { confirmButtonText: '立即支付', cancelButtonText: '稍后支付', type: 'warning' }
+    ).catch(() => false)
+
+    if (confirmed) {
+      const txHash = await payByMetaMask(usageFeeEth)
+      await api.post(`/orders/${currentOrderId.value}/pay-usage-fee`, { txHash })
+      ElMessage.success(`使用费支付成功，交易哈希：${txHash.slice(0, 12)}...`)
     } else {
-      ElMessage.success('还车成功！押金已覆盖全部费用，无需额外付款')
+      ElMessage.warning('请稍后在订单详情中完成使用费支付')
     }
+
     currentOrderId.value = ''
     loadState()
     loadMyOrders()
@@ -1522,7 +1878,7 @@ const loadRefundRequests = async () => {
     try {
       const state = await api.get('/state')
       refundRequests.value = (state.orders || []).filter(
-        (item) => item.refundRequested && item.refundStatus === 'dispatcher_approved'
+        (item) => item.refundRequested && item.refundStatus !== 'completed' && item.refundStatus !== 'rejected'
       )
     } catch (e) {}
   }
@@ -1568,6 +1924,165 @@ const processRefund = async (approved) => {
     if (myUserId.value) loadMyOrders()
   } catch (error) {
     ElMessage.error('退费处理失败')
+  }
+}
+
+// 退押金相关函数
+const loadDepositRefundRequests = async () => {
+  try {
+    loadingDepositRefund.value = true
+    depositRefundRequests.value = await api.get('/admin/deposit-refund-requests')
+  } catch (error) {
+    try {
+      const state = await api.get('/state')
+      depositRefundRequests.value = (state.orders || []).filter(
+        (item) => item.depositRefundRequested && item.depositRefundStatus !== 'completed' && item.depositRefundStatus !== 'rejected'
+      )
+    } catch (e) {
+      ElMessage.error('加载退押金申请列表失败')
+    }
+  } finally {
+    loadingDepositRefund.value = false
+  }
+}
+
+const depositRefundStatusLabel = (status) => {
+  const map = {
+    'pending_admin': '待审核',
+    'completed': '已退款',
+    'rejected': '已拒绝'
+  }
+  return map[status] || status || '待审核'
+}
+
+const depositRefundStatusTagType = (status) => {
+  if (status === 'completed') return 'success'
+  if (status === 'rejected') return 'danger'
+  if (status === 'pending_admin') return 'warning'
+  return 'info'
+}
+
+const openDepositRefundDialog = (order) => {
+  depositRefundOrder.value = order
+  depositRefundForm.approved = true
+  depositRefundForm.note = ''
+  depositRefundVisible.value = true
+}
+
+const submitDepositRefund = async () => {
+  if (!depositRefundOrder.value) return
+  try {
+    depositRefundSubmitting.value = true
+
+    let txHash = null
+
+    // 如果批准退款，需要先通过 MetaMask 发起链上转账
+    if (depositRefundForm.approved) {
+      const order = depositRefundOrder.value
+      const depositEth = order.deposit / 2500  // 换算 ETH
+      const userWallet = order.userWallet || order.user?.walletAddress || null
+
+      if (!userWallet) {
+        ElMessage.error('该用户未绑定钱包地址，无法退还押金')
+        depositRefundSubmitting.value = false
+        return
+      }
+
+      // 检查管理员是否已连接 MetaMask
+      if (!renterWallet.value) {
+        ElMessage.error('请先在页面顶部连接 MetaMask 钱包（管理员身份）')
+        depositRefundSubmitting.value = false
+        return
+      }
+
+      // 弹出 MetaMask 确认转账
+      try {
+        txHash = await refundByMetaMask(renterWallet.value, userWallet, depositEth)
+        ElMessage.info('MetaMask 交易已提交，等待链上确认...')
+      } catch (err) {
+        if (err.code === 4001 || /user rejected|rejected by the user/i.test(err.message)) {
+          ElMessage.warning('您取消了 MetaMask 签名，审核未完成')
+        } else {
+          ElMessage.error(err.message || 'MetaMask 转账失败')
+        }
+        depositRefundSubmitting.value = false
+        return
+      }
+    }
+
+    // 调用后端审核接口
+    const result = await api.post(`/admin/deposit-refund/${depositRefundOrder.value.id}`, {
+      adminId: props.session.username,
+      approved: depositRefundForm.approved,
+      note: depositRefundForm.note,
+      txHash  // 把链上交易哈希传给后端
+    })
+
+    if (depositRefundForm.approved) {
+      if (result?.depositEthAmount) {
+        ElMessage.success({
+          message: `退押金审核完成！${result.depositEthAmount.toFixed(5)} ETH 已退还到用户钱包（tx: ${(txHash || '').slice(0, 10)}...）`,
+          duration: 5000
+        })
+      } else {
+        ElMessage.success('退押金审核完成')
+      }
+    } else {
+      ElMessage.success('已拒绝退押金申请')
+    }
+    depositRefundVisible.value = false
+    loadDepositRefundRequests()
+    loadState()
+    if (myUserId.value) loadMyOrders()
+  } catch (error) {
+    ElMessage.error(error.message || '退押金审核失败')
+  } finally {
+    depositRefundSubmitting.value = false
+  }
+}
+
+// 租客端退押金申请相关函数
+const openDepositRefundApplyDialog = (order) => {
+  depositRefundApplyOrder.value = order
+  depositRefundApplyForm.reason = '正常退押金'
+  depositRefundApplyForm.note = ''
+  depositRefundApplyVisible.value = true
+}
+
+const submitDepositRefundApply = async () => {
+  if (!depositRefundApplyOrder.value) return
+  if (!depositRefundApplyForm.reason) {
+    ElMessage.warning('请选择退押金原因')
+    return
+  }
+  try {
+    depositRefundApplySubmitting.value = true
+    const reason = depositRefundApplyForm.note
+      ? `${depositRefundApplyForm.reason}：${depositRefundApplyForm.note}`
+      : depositRefundApplyForm.reason
+
+    await api.post(
+      `/orders/${depositRefundApplyOrder.value.id}/apply-deposit-refund`,
+      { reason },
+      { suppressError: true }
+    )
+    ElMessage.success('退押金申请已提交，请等待管理员审核')
+    depositRefundApplyVisible.value = false
+    loadMyOrders()
+  } catch (error) {
+    const status = error?.status
+    const msg = error.message || '退押金申请提交失败'
+    if (status === 404 || /404|Not Found/i.test(msg)) {
+      ElMessage.error(
+        '接口 404：请先在项目根目录启动后端（npm start 或 npm run dev），并确保与前端同时运行；也可一键执行 npm run dev:all'
+      )
+    } else if (/Network Error|ECONNREFUSED|连接/i.test(msg)) {
+      ElMessage.error('无法连接后端：请确认 Express 已在端口 3000 运行（与 vite 代理一致）')
+    } else {
+      ElMessage.error(msg)
+    }
+  } finally {
+    depositRefundApplySubmitting.value = false
   }
 }
 

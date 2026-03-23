@@ -279,6 +279,32 @@ app.post("/api/orders/:orderId/pay-usage-fee", async (req, res) => {
   }
 });
 
+// 记录用户存入托管合约的交易哈希（由前端在存款成功后调用）
+app.post("/api/orders/:orderId/escrow-tx", async (req, res) => {
+  try {
+    const { txHash } = req.body;
+    const order = await service.recordEscrowDeposit(req.params.orderId, txHash);
+    logger.info(`Escrow deposit tx recorded for order: ${req.params.orderId}, txHash: ${txHash}`);
+    res.json(order);
+  } catch (error) {
+    logger.error('Error recording escrow deposit tx:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// 租客申请退押金（与其它订单子路由放在一起，避免遗漏注册）
+app.post("/api/orders/:orderId/apply-deposit-refund", async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const order = await service.applyForDepositRefund(req.params.orderId, reason);
+    logger.info(`Deposit refund applied for order: ${req.params.orderId}`);
+    res.json(order);
+  } catch (error) {
+    logger.error('Error applying deposit refund:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
 app.get("/api/orders/history/:userId", async (req, res) => {
   try {
     const records = await service.listUserOrders(req.params.userId);
@@ -333,6 +359,30 @@ app.get("/api/admin/refund-requests", async (req, res) => {
   }
 });
 
+// 获取所有待审核的退押金申请
+app.get("/api/admin/deposit-refund-requests", async (req, res) => {
+  try {
+    const requests = await service.listDepositRefundRequests();
+    res.json(requests);
+  } catch (error) {
+    logger.error('Error listing deposit refund requests:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// 管理员审核退押金
+app.post("/api/admin/deposit-refund/:orderId", async (req, res) => {
+  try {
+    const { adminId, approved, note, txHash } = req.body;
+    const result = await service.processDepositRefund(req.params.orderId, adminId, approved, note, txHash);
+    logger.info(`Deposit refund processed for order: ${req.params.orderId}, approved: ${approved}, txHash: ${txHash || 'none'}`);
+    res.json(result);
+  } catch (error) {
+    logger.error('Error processing deposit refund:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
 app.post("/api/admin/refund/:orderId", async (req, res) => {
   try {
     const { adminId, approved, refundAmount, note } = req.body;
@@ -341,6 +391,18 @@ app.post("/api/admin/refund/:orderId", async (req, res) => {
     res.json(result);
   } catch (error) {
     logger.error('Error processing refund:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// 查询订单的链上托管状态
+app.get("/api/orders/:orderId/escrow-state", async (req, res) => {
+  try {
+    const { getEscrowState } = require("./src/utils/ethEscrow");
+    const state = await getEscrowState(req.params.orderId);
+    res.json(state || { available: false, reason: "合约未配置或查询失败" });
+  } catch (error) {
+    logger.error('Error querying escrow state:', error);
     res.status(400).json({ message: error.message });
   }
 });

@@ -141,6 +141,21 @@ class DataStore {
     await this.ensureColumn('orders', 'usage_fee_paid', 'TINYINT(1) NOT NULL DEFAULT 0');
     await this.ensureColumn('orders', 'usage_fee_tx_hash', 'VARCHAR(128) NULL');
     await this.ensureColumn('orders', 'deposit_tx_hash', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'escrow_deposit_tx_hash', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'escrow_completed_tx_hash', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'escrow_refund_tx_hash', 'VARCHAR(128) NULL');
+    // 退押金相关字段
+    await this.ensureColumn('orders', 'deposit_refund_requested', 'TINYINT(1) NOT NULL DEFAULT 0');
+    await this.ensureColumn('orders', 'deposit_refund_status', 'VARCHAR(32) NULL');
+    await this.ensureColumn('orders', 'deposit_refund_reason', 'VARCHAR(255) NULL');
+    await this.ensureColumn('orders', 'deposit_refund_applied_at', 'BIGINT NULL');
+    await this.ensureColumn('orders', 'deposit_refund_processed_at', 'BIGINT NULL');
+    await this.ensureColumn('orders', 'deposit_refund_processed_by', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'deposit_refund_note', 'TEXT NULL');
+    await this.ensureColumn('orders', 'deposit_refund_tx_hash', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'deposit_refund_to', 'VARCHAR(64) NULL');
+    await this.ensureColumn('orders', 'deposit_escrow_refund_tx_hash', 'VARCHAR(128) NULL');
+    await this.ensureColumn('orders', 'deposit_eth_amount', 'DECIMAL(16,8) NULL');
 
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS maintenance_logs (
@@ -303,7 +318,12 @@ class DataStore {
               refund_requested, refund_status, refund_dispatcher_approved, refund_admin_approved,
               refund_amount, refund_note, refund_processed_at, refund_processed_by,
               eth_refund_tx_hash, eth_refund_to, eth_refund_amount,
-              usage_fee_paid, usage_fee_tx_hash, deposit_tx_hash
+              usage_fee_paid, usage_fee_tx_hash, deposit_tx_hash,
+              escrow_deposit_tx_hash, escrow_completed_tx_hash, escrow_refund_tx_hash,
+              deposit_refund_requested, deposit_refund_status, deposit_refund_reason,
+              deposit_refund_applied_at, deposit_refund_processed_at, deposit_refund_processed_by,
+              deposit_refund_note, deposit_refund_tx_hash, deposit_refund_to,
+              deposit_escrow_refund_tx_hash, deposit_eth_amount
        FROM orders ORDER BY created_at ASC`
     );
     return rows.map((item) => ({
@@ -341,6 +361,21 @@ class DataStore {
       usageFeePaid: Boolean(item.usage_fee_paid),
       usageFeeTxHash: item.usage_fee_tx_hash || null,
       depositTxHash: item.deposit_tx_hash || null,
+      escrowDepositTxHash: item.escrow_deposit_tx_hash || null,
+      escrowCompletedTxHash: item.escrow_completed_tx_hash || null,
+      escrowRefundTxHash: item.escrow_refund_tx_hash || null,
+      // 退押金字段
+      depositRefundRequested: Boolean(item.deposit_refund_requested),
+      depositRefundStatus: item.deposit_refund_status || null,
+      depositRefundReason: item.deposit_refund_reason || null,
+      depositRefundAppliedAt: item.deposit_refund_applied_at ? Number(item.deposit_refund_applied_at) : null,
+      depositRefundProcessedAt: item.deposit_refund_processed_at ? Number(item.deposit_refund_processed_at) : null,
+      depositRefundProcessedBy: item.deposit_refund_processed_by || null,
+      depositRefundNote: item.deposit_refund_note || null,
+      depositRefundTxHash: item.deposit_refund_tx_hash || null,
+      depositRefundTo: item.deposit_refund_to || null,
+      depositEscrowRefundTxHash: item.deposit_escrow_refund_tx_hash || null,
+      depositEthAmount: item.deposit_eth_amount ? Number(item.deposit_eth_amount) : null,
       createdAt: Number(item.created_at)
     }));
   }
@@ -382,7 +417,22 @@ class DataStore {
       'eth_refund_amount',
       'usage_fee_paid',
       'usage_fee_tx_hash',
-      'deposit_tx_hash'
+      'deposit_tx_hash',
+      'escrow_deposit_tx_hash',
+      'escrow_completed_tx_hash',
+      'escrow_refund_tx_hash',
+      // 退押金字段
+      'deposit_refund_requested',
+      'deposit_refund_status',
+      'deposit_refund_reason',
+      'deposit_refund_applied_at',
+      'deposit_refund_processed_at',
+      'deposit_refund_processed_by',
+      'deposit_refund_note',
+      'deposit_refund_tx_hash',
+      'deposit_refund_to',
+      'deposit_escrow_refund_tx_hash',
+      'deposit_eth_amount'
     ];
     const placeholders = orderColumns.map(() => '?').join(', ');
     const insertSql = `INSERT INTO orders (${orderColumns.join(', ')}) VALUES (${placeholders})`;
@@ -430,7 +480,22 @@ class DataStore {
         order.ethRefundAmount != null && order.ethRefundAmount !== undefined ? Number(order.ethRefundAmount) : null,
         order.usageFeePaid ? 1 : 0,
         order.usageFeeTxHash ?? null,
-        order.depositTxHash ?? null
+        order.depositTxHash ?? null,
+        order.escrowDepositTxHash ?? null,
+        order.escrowCompletedTxHash ?? null,
+        order.escrowRefundTxHash ?? null,
+        // 退押金字段值
+        order.depositRefundRequested ? 1 : 0,
+        order.depositRefundStatus ?? null,
+        order.depositRefundReason ?? null,
+        order.depositRefundAppliedAt != null ? Number(order.depositRefundAppliedAt) : null,
+        order.depositRefundProcessedAt != null ? Number(order.depositRefundProcessedAt) : null,
+        order.depositRefundProcessedBy ?? null,
+        order.depositRefundNote ?? null,
+        order.depositRefundTxHash ?? null,
+        order.depositRefundTo ?? null,
+        order.depositEscrowRefundTxHash ?? null,
+        order.depositEthAmount != null && order.depositEthAmount !== undefined ? Number(order.depositEthAmount) : null
       ];
       if (values.length !== orderColumns.length) {
         throw new Error(
