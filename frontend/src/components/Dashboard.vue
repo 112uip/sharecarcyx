@@ -1173,7 +1173,7 @@ const quickRent = () => {
 }
 
 const roleLabel = computed(() => {
-  const map = { renter: '租客', admin: '管理员', dispatcher: '调度员' }
+  const map = { renter: '用户', admin: '管理员', dispatcher: '调度员' }
   return map[props.session.role] || '未知'
 })
 
@@ -1445,7 +1445,7 @@ const restoreRenterState = () => {
   }
 }
 
-// 根据 accountId 从服务端同步当前租客的用户ID，确保与后端一致
+// 根据 accountId 从服务端同步当前用户的用户ID，确保与后端一致
 const syncRenterUser = async () => {
   if (props.session.role !== 'renter' || !props.session.accountId) {
     return
@@ -1610,7 +1610,7 @@ const createOrder = async () => {
       }
       ElMessage.success('订单创建成功')
     } else {
-      // 非租客角色直接建单（管理员/调度员等）
+      // 非用户角色直接建单（管理员/调度员等）
       const res = await api.post('/orders', {
         userId: myUserId.value,
         carId: rentForm.carId,
@@ -1928,7 +1928,7 @@ const submitDepositRefund = async () => {
   }
 }
 
-// 租客端退押金申请相关函数
+// 用户端退押金申请相关函数
 const openDepositRefundApplyDialog = (order) => {
   depositRefundApplyOrder.value = order
   depositRefundApplyForm.reason = '正常退押金'

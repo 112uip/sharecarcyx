@@ -292,7 +292,7 @@ app.post("/api/orders/:orderId/escrow-tx", async (req, res) => {
   }
 });
 
-// 租客申请退押金（与其它订单子路由放在一起，避免遗漏注册）
+// 用户申请退押金（与其它订单子路由放在一起，避免遗漏注册）
 app.post("/api/orders/:orderId/apply-deposit-refund", async (req, res) => {
   try {
     const { reason } = req.body;

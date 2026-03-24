@@ -66,7 +66,7 @@
 ```
 
 **角色类型**:
-- `renter`: 租客
+- `renter`: 用户
 - `admin`: 管理员
 - `dispatcher`: 调度员
 

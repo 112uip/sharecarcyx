@@ -6,7 +6,7 @@
       <section class="brand-panel">
         <div class="brand-chip">联盟链出行平台</div>
         <h1>让共享汽车流程更可信</h1>
-        <p>支持租客、管理员、调度员协同操作，业务过程可追踪、可存证、可回溯。</p>
+        <p>支持用户、管理员、调度员协同操作，业务过程可追踪、可存证、可回溯。</p>
         <div class="brand-stats">
           <div class="stat-item">
             <span>角色协同</span>
@@ -40,7 +40,7 @@
         <div class="role-selector">
           <span class="role-label">角色选择</span>
           <el-radio-group v-model="authRole" class="role-group">
-            <el-radio-button value="renter">租客</el-radio-button>
+            <el-radio-button value="renter">用户</el-radio-button>
             <el-radio-button value="admin">管理员</el-radio-button>
             <el-radio-button value="dispatcher">调度员</el-radio-button>
           </el-radio-group>
