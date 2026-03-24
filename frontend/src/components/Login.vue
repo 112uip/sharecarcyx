@@ -133,7 +133,7 @@ const handleSubmit = async () => {
   display: grid;
   place-items: center;
   padding: 24px;
-  background-image: linear-gradient(120deg, rgba(15, 23, 42, 0.32), rgba(30, 64, 175, 0.2)), url('/mobility-bg.svg');
+  background-image: linear-gradient(120deg, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.38)), url('/car-bg.png');
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
@@ -143,7 +143,7 @@ const handleSubmit = async () => {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(248, 250, 252, 0.7), rgba(239, 246, 255, 0.55));
+  background: linear-gradient(135deg, rgba(248, 250, 252, 0.26), rgba(239, 246, 255, 0.2));
   z-index: 0;
 }
 
@@ -178,7 +178,7 @@ const handleSubmit = async () => {
   grid-template-columns: 1.1fr 1fr;
   border-radius: 24px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.84);
+  background: rgba(255, 255, 255, 0.76);
   border: 1px solid rgba(148, 163, 184, 0.2);
   box-shadow: 0 24px 60px rgba(37, 99, 235, 0.14);
   backdrop-filter: blur(12px);
@@ -188,7 +188,7 @@ const handleSubmit = async () => {
   position: relative;
   isolation: isolate;
   padding: 52px 44px;
-  background-image: linear-gradient(145deg, rgba(29, 78, 216, 0.72), rgba(37, 99, 235, 0.66) 50%, rgba(30, 64, 175, 0.72)), url('/mobility-bg.svg');
+  background-image: linear-gradient(145deg, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.52) 50%, rgba(0, 0, 0, 0.62)), url('/car-bg.png');
   background-size: cover;
   background-position: center;
   color: #eff6ff;
@@ -203,7 +203,7 @@ const handleSubmit = async () => {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.06), rgba(15, 23, 42, 0.24));
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.3));
 }
 
 .brand-chip {

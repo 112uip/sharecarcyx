@@ -1,6 +1,48 @@
 <template>
   <el-container class="dashboard-layout">
     <el-header class="app-header">
+      <!-- 装饰性卡通汽车 -->
+      <div class="header-decoration">
+        <svg class="deco-car deco-car-1" width="40" height="24" viewBox="0 0 40 24" fill="none">
+          <ellipse cx="20" cy="18" rx="16" ry="4" fill="#1d4ed820"/>
+          <rect x="4" y="8" width="32" height="10" rx="4" fill="#3b82f6"/>
+          <rect x="8" y="4" width="20" height="8" rx="3" fill="#60a5fa"/>
+          <rect x="10" y="5" width="6" height="5" rx="1" fill="#bfdbfe"/>
+          <rect x="18" y="5" width="8" height="5" rx="1" fill="#bfdbfe"/>
+          <circle cx="10" cy="18" r="4" fill="#1e3a5f"/>
+          <circle cx="10" cy="18" r="2" fill="#64748b"/>
+          <circle cx="30" cy="18" r="4" fill="#1e3a5f"/>
+          <circle cx="30" cy="18" r="2" fill="#64748b"/>
+          <rect x="2" y="10" width="4" height="3" rx="1" fill="#fbbf24"/>
+          <rect x="34" y="10" width="4" height="3" rx="1" fill="#ef4444"/>
+        </svg>
+        <svg class="deco-car deco-car-2" width="32" height="20" viewBox="0 0 40 24" fill="none">
+          <ellipse cx="20" cy="18" rx="14" ry="3" fill="#10b98120"/>
+          <rect x="6" y="10" width="28" height="8" rx="3" fill="#10b981"/>
+          <rect x="10" y="6" width="16" height="7" rx="2" fill="#34d399"/>
+          <rect x="12" y="7" width="5" height="4" rx="1" fill="#a7f3d0"/>
+          <rect x="19" y="7" width="5" height="4" rx="1" fill="#a7f3d0"/>
+          <circle cx="11" cy="18" r="3" fill="#065f46"/>
+          <circle cx="11" cy="18" r="1.5" fill="#64748b"/>
+          <circle cx="29" cy="18" r="3" fill="#065f46"/>
+          <circle cx="29" cy="18" r="1.5" fill="#64748b"/>
+          <rect x="4" y="12" width="3" height="2" rx="1" fill="#fbbf24"/>
+          <rect x="33" y="12" width="3" height="2" rx="1" fill="#f87171"/>
+        </svg>
+        <svg class="deco-car deco-car-3" width="28" height="18" viewBox="0 0 40 24" fill="none">
+          <ellipse cx="20" cy="18" rx="12" ry="3" fill="#f59e0b20"/>
+          <rect x="8" y="10" width="24" height="7" rx="3" fill="#f59e0b"/>
+          <rect x="12" y="6" width="14" height="7" rx="2" fill="#fbbf24"/>
+          <rect x="13" y="7" width="5" height="4" rx="1" fill="#fef3c7"/>
+          <rect x="20" y="7" width="4" height="4" rx="1" fill="#fef3c7"/>
+          <circle cx="12" cy="17" r="3" fill="#92400e"/>
+          <circle cx="12" cy="17" r="1.5" fill="#64748b"/>
+          <circle cx="28" cy="17" r="3" fill="#92400e"/>
+          <circle cx="28" cy="17" r="1.5" fill="#64748b"/>
+          <rect x="6" y="12" width="3" height="2" rx="1" fill="#fcd34d"/>
+          <rect x="31" y="12" width="3" height="2" rx="1" fill="#f87171"/>
+        </svg>
+      </div>
       <div class="logo">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M5 11L6.5 6.5H17.5L19 11M5 11H3C2.45 11 2 11.45 2 12V16C2 16.55 2.45 17 3 17H4C4.55 17 5 16.55 5 16V15H19V16C19 16.55 19.45 17 20 17H21C21.55 17 22 16.55 22 16V12C22 11.45 21.55 11 21 11H19M5 11H19" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -81,7 +123,66 @@
       <el-main class="content-area">
         <!-- Overview -->
         <div v-if="activeMenu === 'overview'">
+          <!-- 页面标题装饰 -->
+          <div class="page-title-wrapper">
+            <svg class="title-car" width="50" height="30" viewBox="0 0 50 30" fill="none">
+              <ellipse cx="25" cy="24" rx="20" ry="5" fill="#3b82f620"/>
+              <rect x="5" y="10" width="40" height="12" rx="5" fill="#3b82f6"/>
+              <rect x="10" y="4" width="25" height="10" rx="4" fill="#60a5fa"/>
+              <rect x="12" y="6" width="8" height="6" rx="2" fill="#bfdbfe"/>
+              <rect x="23" y="6" width="9" height="6" rx="2" fill="#bfdbfe"/>
+              <circle cx="12" cy="24" r="5" fill="#1e3a5f"/>
+              <circle cx="12" cy="24" r="2.5" fill="#64748b"/>
+              <circle cx="38" cy="24" r="5" fill="#1e3a5f"/>
+              <circle cx="38" cy="24" r="2.5" fill="#64748b"/>
+              <rect x="2" y="13" width="5" height="4" rx="1" fill="#fbbf24"/>
+              <rect x="43" y="13" width="5" height="4" rx="1" fill="#ef4444"/>
+            </svg>
+            <h2 class="page-title">车型甄选</h2>
+            <svg class="title-car title-car-right" width="50" height="30" viewBox="0 0 50 30" fill="none">
+              <ellipse cx="25" cy="24" rx="20" ry="5" fill="#10b98120"/>
+              <rect x="5" y="10" width="40" height="12" rx="5" fill="#10b981"/>
+              <rect x="10" y="4" width="25" height="10" rx="4" fill="#34d399"/>
+              <rect x="12" y="6" width="8" height="6" rx="2" fill="#a7f3d0"/>
+              <rect x="23" y="6" width="9" height="6" rx="2" fill="#a7f3d0"/>
+              <circle cx="12" cy="24" r="5" fill="#065f46"/>
+              <circle cx="12" cy="24" r="2.5" fill="#64748b"/>
+              <circle cx="38" cy="24" r="5" fill="#065f46"/>
+              <circle cx="38" cy="24" r="2.5" fill="#64748b"/>
+              <rect x="2" y="13" width="5" height="4" rx="1" fill="#fbbf24"/>
+              <rect x="43" y="13" width="5" height="4" rx="1" fill="#f87171"/>
+            </svg>
+          </div>
           <el-row :gutter="20" class="stat-cards">
+            <!-- 统计卡片装饰 -->
+            <div class="stat-decoration">
+              <svg class="stat-car stat-car-left" width="45" height="28" viewBox="0 0 45 28" fill="none">
+                <ellipse cx="22.5" cy="22" rx="18" ry="4" fill="#8b5cf620"/>
+                <rect x="4" y="9" width="37" height="11" rx="5" fill="#8b5cf6"/>
+                <rect x="9" y="4" width="23" height="9" rx="4" fill="#a78bfa"/>
+                <rect x="11" y="6" width="7" height="5" rx="1" fill="#ede9fe"/>
+                <rect x="21" y="6" width="8" height="5" rx="1" fill="#ede9fe"/>
+                <circle cx="10" cy="22" r="4" fill="#5b21b6"/>
+                <circle cx="10" cy="22" r="2" fill="#64748b"/>
+                <circle cx="35" cy="22" r="4" fill="#5b21b6"/>
+                <circle cx="35" cy="22" r="2" fill="#64748b"/>
+                <rect x="2" y="12" width="4" height="3" rx="1" fill="#fbbf24"/>
+                <rect x="39" y="12" width="4" height="3" rx="1" fill="#f87171"/>
+              </svg>
+              <svg class="stat-car stat-car-right" width="40" height="25" viewBox="0 0 45 28" fill="none">
+                <ellipse cx="22.5" cy="22" rx="16" ry="4" fill="#ec489920"/>
+                <rect x="6" y="10" width="33" height="10" rx="4" fill="#ec4899"/>
+                <rect x="10" y="5" width="20" height="8" rx="3" fill="#f472b6"/>
+                <rect x="12" y="7" width="6" height="4" rx="1" fill="#fce7f3"/>
+                <rect x="20" y="7" width="7" height="4" rx="1" fill="#fce7f3"/>
+                <circle cx="11" cy="22" r="4" fill="#9d174d"/>
+                <circle cx="11" cy="22" r="2" fill="#64748b"/>
+                <circle cx="34" cy="22" r="4" fill="#9d174d"/>
+                <circle cx="34" cy="22" r="2" fill="#64748b"/>
+                <rect x="4" y="13" width="4" height="3" rx="1" fill="#fbbf24"/>
+                <rect x="37" y="13" width="4" height="3" rx="1" fill="#f87171"/>
+              </svg>
+            </div>
             <template v-if="session.role === 'renter'">
               <el-col :span="12">
                 <el-card shadow="hover">
@@ -174,7 +275,25 @@
                   </el-card>
                 </el-col>
               </el-row>
-              <el-empty v-if="carsList.length === 0 && !loadingCars" description="暂无车辆数据" />
+              <el-empty v-if="carsList.length === 0 && !loadingCars">
+              <template #image>
+                <svg width="120" height="80" viewBox="0 0 120 80" fill="none" style="margin: 0 auto;">
+                  <ellipse cx="60" cy="70" rx="50" ry="8" fill="#e2e8f0"/>
+                  <rect x="10" y="35" width="100" height="30" rx="12" fill="#94a3b8"/>
+                  <rect x="20" y="18" width="65" height="25" rx="10" fill="#cbd5e1"/>
+                  <rect x="25" y="22" width="20" height="15" rx="4" fill="#f1f5f9"/>
+                  <rect x="50" y="22" width="25" height="15" rx="4" fill="#f1f5f9"/>
+                  <circle cx="28" cy="65" r="12" fill="#475569"/>
+                  <circle cx="28" cy="65" r="6" fill="#64748b"/>
+                  <circle cx="92" cy="65" r="12" fill="#475569"/>
+                  <circle cx="92" cy="65" r="6" fill="#64748b"/>
+                  <rect x="5" y="42" width="12" height="8" rx="3" fill="#fbbf24"/>
+                  <rect x="103" y="42" width="12" height="8" rx="3" fill="#f87171"/>
+                  <text x="60" y="15" text-anchor="middle" font-size="10" fill="#94a3b8">暂无车辆</text>
+                </svg>
+              </template>
+              <span style="color: #64748b;">暂无车辆数据</span>
+            </el-empty>
             </div>
           </el-card>
         </div>
@@ -2124,15 +2243,138 @@ watch(
 
 .dashboard-layout {
   height: 100vh;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),
+    url('/car-bg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
+}
+
+/* 头部装饰汽车 */
+.header-decoration {
+  position: absolute;
+  left: 240px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.7;
+}
+
+.deco-car {
+  animation: carFloat 3s ease-in-out infinite;
+}
+
+.deco-car-1 {
+  animation-delay: 0s;
+}
+
+.deco-car-2 {
+  animation-delay: 1s;
+}
+
+.deco-car-3 {
+  animation-delay: 2s;
+}
+
+@keyframes carFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* 页面标题装饰 */
+.page-title-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px 0;
+  position: relative;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1e40af;
+  margin: 0;
+  text-align: center;
+}
+
+.title-car {
+  animation: carBounce 2s ease-in-out infinite;
+}
+
+.title-car-right {
+  animation-delay: 0.5s;
+}
+
+@keyframes carBounce {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-4px) rotate(-2deg);
+  }
+  75% {
+    transform: translateY(-4px) rotate(2deg);
+  }
+}
+
+/* 统计卡片装饰 */
+.stat-decoration {
+  position: absolute;
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px;
+  top: -10px;
+  left: 0;
+  pointer-events: none;
+}
+
+.stat-car {
+  opacity: 0.6;
+  animation: statCarMove 4s ease-in-out infinite;
+}
+
+.stat-car-right {
+  animation-delay: 2s;
+}
+
+@keyframes statCarMove {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(10px);
+  }
 }
 
 .app-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #fff;
-  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border-bottom: 2px solid #e2e8f0;
   padding: 0 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.app-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #3b82f6, #10b981, #f59e0b, #ec4899, #8b5cf6);
 }
 
 .logo {
@@ -2385,6 +2627,29 @@ watch(
   position: absolute;
   top: 12px;
   right: 12px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  animation: tagPulse 2s ease-in-out infinite;
+}
+
+@keyframes tagPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.car-card {
+  transition: all 0.3s ease;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.car-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.12);
 }
 
 .car-info {
