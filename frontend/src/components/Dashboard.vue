@@ -61,7 +61,7 @@
             </el-menu-item>
             <el-menu-item index="admin-deposit">
               <el-icon><Coin /></el-icon>
-              <span>退押金管理</span>
+              <span>退费管理</span>
             </el-menu-item>
           </template>
 
@@ -620,9 +620,9 @@
         </el-card>
 
         <!-- Admin: Deposit Refund Management -->
-        <el-card v-if="activeMenu === 'admin-deposit'" header="退押金管理" shadow="hover" class="action-card">
+        <el-card v-if="activeMenu === 'admin-deposit'" header="退费管理" shadow="hover" class="action-card">
           <el-alert type="info" :closable="false" class="mb-4">
-            退押金管理：审核用户正常还车后的押金退还申请
+            退费管理：审核用户正常还车后的押金退还申请
           </el-alert>
           <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <el-button type="primary" size="small" @click="loadDepositRefundRequests">
