@@ -40,10 +40,14 @@
         <div class="role-selector">
           <span class="role-label">角色选择</span>
           <el-radio-group v-model="authRole" class="role-group">
-            <el-radio-button value="renter">用户</el-radio-button>
-            <el-radio-button value="admin">管理员</el-radio-button>
-            <el-radio-button value="dispatcher">调度员</el-radio-button>
+            <el-radio-button v-if="authMode === 'login'" value="renter">用户</el-radio-button>
+            <el-radio-button v-if="authMode === 'login'" value="admin">管理员</el-radio-button>
+            <el-radio-button v-if="authMode === 'login'" value="dispatcher">调度员</el-radio-button>
+            <el-radio-button v-if="authMode === 'register'" value="renter">用户</el-radio-button>
           </el-radio-group>
+          <p v-if="authMode === 'register'" class="role-hint">
+            管理员和调度员账号请联系系统管理员获取
+          </p>
         </div>
 
         <el-form :model="form" class="login-form">
@@ -310,6 +314,13 @@ const handleSubmit = async () => {
 
 .role-group :deep(.el-radio-button__inner) {
   width: 100%;
+}
+
+.role-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
 }
 
 .submit-btn {

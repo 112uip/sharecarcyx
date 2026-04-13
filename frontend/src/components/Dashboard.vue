@@ -112,6 +112,11 @@
               <el-icon><DataBoard /></el-icon>
               <span>车型甄选</span>
             </el-menu-item>
+            <el-menu-item index="dispatcher-issues">
+              <el-icon><Warning /></el-icon>
+              <span>故障工单</span>
+              <el-badge v-if="dispatcherIssues.length > 0" :value="dispatcherIssues.length" type="danger" class="issue-badge" />
+            </el-menu-item>
             <el-menu-item index="dispatcher-maint">
               <el-icon><Tools /></el-icon>
               <span>车辆调度</span>
@@ -916,8 +921,8 @@
           </el-dialog>
         </el-card>
 
-        <!-- Dispatcher: Maintenance -->
-        <el-card v-if="activeMenu === 'dispatcher-maint'" header="车辆调度与维护" shadow="hover" class="action-card">
+        <!-- Dispatcher: Fault Tickets -->
+        <el-card v-if="activeMenu === 'dispatcher-issues'" header="故障工单" shadow="hover" class="action-card">
           <el-card shadow="never" class="mb-4" header="待处理故障工单">
             <el-table :data="dispatcherIssues" style="width: 100%">
               <el-table-column prop="id" label="订单ID" min-width="170" />
@@ -937,10 +942,14 @@
             </el-table>
             <el-empty v-if="dispatcherIssues.length === 0" description="暂无待处理故障" />
           </el-card>
+        </el-card>
+
+        <!-- Dispatcher: Maintenance -->
+        <el-card v-if="activeMenu === 'dispatcher-maint'" header="车辆调度与维护" shadow="hover" class="action-card">
           <el-form label-width="100px" style="max-width: 500px">
             <el-form-item label="选择车辆">
               <el-select v-model="maintForm.carId" style="width: 100%">
-                <el-option v-for="car in carsList" :key="car.id" :label="`${car.id} - 状态: ${getCarStatusLabel(car.status)}`" :value="car.id" />
+                <el-option v-for="car in carsList" :key="car.id" :label="`${car.id} - ${car.model} (${car.location})`" :value="car.id" />
               </el-select>
             </el-form-item>
             <el-form-item label="执行动作">
@@ -949,6 +958,9 @@
                 <el-radio value="repairing">维修保养</el-radio>
                 <el-radio value="relocated">调度挪车</el-radio>
               </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="maintForm.action === 'relocated'" label="新位置">
+              <el-input v-model="maintForm.newLocation" placeholder="请输入车辆新位置" />
             </el-form-item>
             <el-form-item label="目标状态">
               <el-select v-model="maintForm.targetStatus" style="width: 100%">
@@ -1099,7 +1111,7 @@ const rentForm = reactive({ carId: '', hours: 1 })
 const chainData = ref('')
 const carEvidenceList = ref([])
 const loadingEvidence = ref(false)
-const maintForm = reactive({ carId: '', action: 'charged', targetStatus: 'available', note: '' })
+const maintForm = reactive({ carId: '', action: 'charged', targetStatus: 'available', note: '', newLocation: '' })
 const myOrders = ref([])
 const hiddenResolvedIssueIds = ref([])
 const renterWallet = ref(props.session.walletAddress || '')
@@ -1779,6 +1791,11 @@ const approveUser = async (userId) => {
 const submitMaintenance = async () => {
   if (!maintForm.carId) return ElMessage.warning('请选择车辆')
   try {
+    if (maintForm.action === 'relocated' && maintForm.newLocation) {
+      await api.put(`/admin/cars/${maintForm.carId}`, {
+        location: maintForm.newLocation
+      })
+    }
     await api.post('/dispatcher/maintenance', {
       carId: maintForm.carId,
       dispatcher: props.session.username,
@@ -1787,6 +1804,7 @@ const submitMaintenance = async () => {
       note: maintForm.note
     })
     ElMessage.success('维护记录已提交')
+    maintForm.newLocation = ''
     loadState()
   } catch (error) {}
 }
@@ -2407,6 +2425,10 @@ watch(
 .side-menu {
   background-color: #fff;
   border-right: 1px solid #e2e8f0;
+}
+
+.issue-badge {
+  margin-left: 8px;
 }
 
 .el-menu-vertical {

@@ -79,9 +79,9 @@ class CarShareService {
 
   async registerAccount(role, username, password, displayName) {
     await this.refreshState();
-    const allowedRoles = ["renter", "admin", "dispatcher"];
+    const allowedRoles = ["renter"];
     if (!allowedRoles.includes(role)) {
-      throw new Error("角色不合法");
+      throw new Error("仅支持租车用户自助注册，管理员和调度员账号请联系系统管理员");
     }
     if (!username || !password) {
       throw new Error("账号或密码不能为空");
